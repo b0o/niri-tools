@@ -5,6 +5,16 @@ pub fn socket_path() -> PathBuf {
     PathBuf::from(runtime_dir).join("niri-tools.sock")
 }
 
+pub fn default_config_path() -> PathBuf {
+    let config_dir = std::env::var("XDG_CONFIG_HOME").unwrap_or_else(|_| {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+        format!("{home}/.config")
+    });
+    PathBuf::from(config_dir)
+        .join("niri")
+        .join("scratchpads.kdl")
+}
+
 pub fn state_file_path() -> PathBuf {
     let runtime_dir = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".to_string());
     PathBuf::from(runtime_dir).join("niri-tools-state.json")
