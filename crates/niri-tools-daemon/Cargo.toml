@@ -6,6 +6,11 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+anyhow = "1"
+async-trait = "0.1"
+bincode = { version = "2", features = ["serde"] }
+futures-core = "0.3"
+futures-util = "0.3"
 niri-tools-common = { path = "../niri-tools-common" }
 regex = "1"
 serde = { version = "1", features = ["derive"] }
@@ -13,6 +18,4 @@ serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "process", "fs", "signal", "io-util", "time"] }
 
 [dev-dependencies]
-async-trait = "0.1"
-futures-core = "0.3"
 tempfile = "3"
