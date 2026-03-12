@@ -88,7 +88,7 @@ pub fn parse_niri_event(json: &Value) -> Option<NiriEvent> {
 }
 
 /// Parse a niri window JSON object into `WindowInfo`.
-fn parse_window_info(data: &Value) -> Option<WindowInfo> {
+pub fn parse_window_info(data: &Value) -> Option<WindowInfo> {
     let id = data.get("id").and_then(|v| v.as_u64())?;
     let app_id = data
         .get("app_id")

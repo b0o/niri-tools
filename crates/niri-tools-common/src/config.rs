@@ -29,12 +29,12 @@ pub struct OutputOverride {
     pub position: Option<PositionConfig>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum NotifyLevel {
-    None,
-    Error,
-    Warning,
-    All,
+    None = 0,
+    Error = 1,
+    Warning = 2,
+    All = 3,
 }
 
 #[derive(Debug, Clone, PartialEq)]
