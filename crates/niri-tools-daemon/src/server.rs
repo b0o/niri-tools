@@ -35,10 +35,22 @@ impl DaemonServer {
         self.running = true;
 
         // Load initial config
+        tracing::info!("loading config");
         self.reload_config(false);
+        tracing::info!(
+            scratchpads = self.state.scratchpad_configs.len(),
+            "config loaded"
+        );
 
         // Populate initial state from niri
+        tracing::info!("initializing state from niri");
         self.initialize_state().await?;
+        tracing::info!(
+            windows = self.state.windows.len(),
+            workspaces = self.state.workspaces.len(),
+            outputs = self.state.outputs.len(),
+            "state initialized"
+        );
 
         // Load persisted scratchpad state
         self.state.load_scratchpad_state();
@@ -51,6 +63,7 @@ impl DaemonServer {
 
         // Bind socket
         let listener = UnixListener::bind(&sock_path)?;
+        tracing::info!(socket = %sock_path.display(), "listening");
 
         // Main event loop
         self.run_loop(listener).await?;
@@ -100,26 +113,34 @@ impl DaemonServer {
         let mut sigint = signal(SignalKind::interrupt())?;
 
         // Subscribe to niri events
+        tracing::info!("subscribing to niri event stream");
         let mut event_stream: Option<
             Pin<Box<dyn Stream<Item = niri_tools_common::Result<niri_tools_common::types::NiriEvent>> + Send>>,
         > = match self.niri.subscribe_events().await {
-            Ok(stream) => Some(stream),
+            Ok(stream) => {
+                tracing::info!("event stream connected");
+                Some(stream)
+            }
             Err(e) => {
+                tracing::warn!(%e, "failed to subscribe to event stream");
                 self.notifier
                     .notify_warning("Event Stream", &format!("Failed to subscribe: {e}"));
                 None
             }
         };
 
+        tracing::info!("entering main loop");
         while self.running {
             tokio::select! {
                 // Accept client connection
                 result = listener.accept() => {
                     match result {
                         Ok((stream, _addr)) => {
+                            tracing::debug!("client connected");
                             self.handle_client_connection(stream).await;
                         }
                         Err(e) => {
+                            tracing::error!(%e, "socket accept failed");
                             self.notifier.notify_error("Socket", &format!("Accept failed: {e}"));
                         }
                     }
@@ -135,19 +156,26 @@ impl DaemonServer {
                     }
                 } => {
                     match event {
-                        Some(Ok(niri_event)) => {
-                            self.handle_niri_event(&niri_event).await;
+                        Some(Ok(ref niri_event)) => {
+                            tracing::debug!(?niri_event, "niri event");
+                            self.handle_niri_event(niri_event).await;
                         }
                         Some(Err(e)) => {
+                            tracing::warn!(%e, "event stream error");
                             self.notifier.notify_warning("Event Stream", &format!("Event error: {e}"));
                         }
                         None => {
                             // Stream ended, wait before reconnecting to avoid tight loops
+                            tracing::warn!("event stream ended, reconnecting in 2s");
                             self.notifier.notify_warning("Event Stream", "Stream ended, reconnecting in 2s");
                             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                             event_stream = match self.niri.subscribe_events().await {
-                                Ok(stream) => Some(stream),
+                                Ok(stream) => {
+                                    tracing::info!("event stream reconnected");
+                                    Some(stream)
+                                }
                                 Err(e) => {
+                                    tracing::error!(%e, "event stream reconnect failed");
                                     self.notifier.notify_error("Event Stream", &format!("Reconnect failed: {e}"));
                                     None
                                 }
@@ -158,9 +186,11 @@ impl DaemonServer {
 
                 // Signals
                 _ = sigterm.recv() => {
+                    tracing::info!("received SIGTERM, shutting down");
                     self.running = false;
                 }
                 _ = sigint.recv() => {
+                    tracing::info!("received SIGINT, shutting down");
                     self.running = false;
                 }
             }
@@ -191,10 +221,12 @@ impl DaemonServer {
 
     /// Route a command to the appropriate handler.
     pub async fn dispatch_command(&mut self, command: Command) -> Response {
+        tracing::info!(?command, "dispatching");
         match command {
             Command::DaemonStatus => self.get_status(),
 
             Command::DaemonStop => {
+                tracing::info!("stop requested by client");
                 self.running = false;
                 Response::Ok
             }

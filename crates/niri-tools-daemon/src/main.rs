@@ -11,6 +11,16 @@ use notify::RealNotifier;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "niri_tools_daemon=info".parse().unwrap()),
+        )
+        .with_writer(std::io::stderr)
+        .init();
+
+    tracing::info!("niri-tools-daemon starting");
+
     let niri_client: Box<dyn niri_tools_common::traits::NiriClient> =
         Box::new(RealNiriClient);
     let notifier: Box<dyn niri_tools_common::traits::Notifier> =
