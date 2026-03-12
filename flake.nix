@@ -36,6 +36,7 @@
             filter = path: _type: builtins.baseNameOf path != "target";
           };
           cargoLock.lockFile = ./Cargo.lock;
+          buildType = "release";
         };
       in {
         packages = {
