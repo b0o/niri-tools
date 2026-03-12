@@ -165,8 +165,18 @@ impl DaemonState {
 
     /// Saves scratchpad state to disk as JSON. Uses atomic write (temp + rename).
     pub fn save_scratchpad_state(&self) -> Result<(), std::io::Error> {
-        let session = get_niri_session_id().unwrap_or_default();
+        self.save_scratchpad_state_to(
+            &state_file_path(),
+            &get_niri_session_id().unwrap_or_default(),
+        )
+    }
 
+    /// Saves scratchpad state to a specific path with a given session ID.
+    pub fn save_scratchpad_state_to(
+        &self,
+        path: &std::path::Path,
+        session_id: &str,
+    ) -> Result<(), std::io::Error> {
         let mut persisted_scratchpads = HashMap::new();
         for (name, sp) in &self.scratchpads {
             persisted_scratchpads.insert(
@@ -185,12 +195,11 @@ impl DaemonState {
         }
 
         let state = PersistedState {
-            niri_session: session,
+            niri_session: session_id.to_string(),
             scratchpads: persisted_scratchpads,
             window_to_scratchpad: persisted_w2s,
         };
 
-        let path = state_file_path();
         let json = serde_json::to_string_pretty(&state).map_err(std::io::Error::other)?;
 
         // Atomic write: write to temp file in the same directory, then rename
@@ -201,7 +210,7 @@ impl DaemonState {
             f.write_all(json.as_bytes())?;
             f.flush()?;
         }
-        std::fs::rename(&tmp_path, &path)?;
+        std::fs::rename(&tmp_path, path)?;
 
         Ok(())
     }
@@ -209,8 +218,15 @@ impl DaemonState {
     /// Loads scratchpad state from disk. Returns true if state was loaded successfully.
     /// Returns false if the file doesn't exist, session mismatches, or there's a parse error.
     pub fn load_scratchpad_state(&mut self) -> bool {
-        let path = state_file_path();
-        let data = match std::fs::read_to_string(&path) {
+        self.load_scratchpad_state_from(
+            &state_file_path(),
+            &get_niri_session_id().unwrap_or_default(),
+        )
+    }
+
+    /// Loads scratchpad state from a specific path, validating against the given session ID.
+    pub fn load_scratchpad_state_from(&mut self, path: &std::path::Path, session_id: &str) -> bool {
+        let data = match std::fs::read_to_string(path) {
             Ok(d) => d,
             Err(_) => return false,
         };
@@ -221,8 +237,7 @@ impl DaemonState {
         };
 
         // Validate session
-        let current_session = get_niri_session_id().unwrap_or_default();
-        if persisted.niri_session != current_session {
+        if persisted.niri_session != session_id {
             return false;
         }
 
@@ -546,22 +561,21 @@ mod tests {
     #[test]
     fn save_and_load_scratchpad_state_roundtrip() {
         let dir = tempfile::tempdir().unwrap();
-        // Set env vars for the test
-        unsafe {
-            std::env::set_var("XDG_RUNTIME_DIR", dir.path());
-            std::env::set_var("NIRI_SOCKET", "/run/user/1000/niri.1234.0.sock");
-        }
+        let state_path = dir.path().join("niri-tools-state.json");
+        let session = "test-session-1234";
 
         let mut state = DaemonState::default();
         state.register_scratchpad_window("term", 42);
         state.mark_scratchpad_visible("term");
         state.register_scratchpad_window("browser", 43);
 
-        state.save_scratchpad_state().unwrap();
+        state
+            .save_scratchpad_state_to(&state_path, session)
+            .unwrap();
 
         // Load into fresh state
         let mut state2 = DaemonState::default();
-        assert!(state2.load_scratchpad_state());
+        assert!(state2.load_scratchpad_state_from(&state_path, session));
 
         assert_eq!(
             state2.window_to_scratchpad.get(&42),
@@ -584,34 +598,26 @@ mod tests {
     #[test]
     fn load_scratchpad_state_returns_false_for_missing_file() {
         let dir = tempfile::tempdir().unwrap();
-        unsafe {
-            std::env::set_var("XDG_RUNTIME_DIR", dir.path());
-        }
+        let state_path = dir.path().join("nonexistent.json");
 
         let mut state = DaemonState::default();
-        assert!(!state.load_scratchpad_state());
+        assert!(!state.load_scratchpad_state_from(&state_path, "any-session"));
     }
 
     #[test]
     fn load_scratchpad_state_returns_false_for_session_mismatch() {
         let dir = tempfile::tempdir().unwrap();
-
-        unsafe {
-            std::env::set_var("XDG_RUNTIME_DIR", dir.path());
-            std::env::set_var("NIRI_SOCKET", "/run/user/1000/niri.1234.0.sock");
-        }
+        let state_path = dir.path().join("niri-tools-state.json");
 
         let mut state = DaemonState::default();
         state.register_scratchpad_window("term", 42);
-        state.save_scratchpad_state().unwrap();
+        state
+            .save_scratchpad_state_to(&state_path, "session-A")
+            .unwrap();
 
-        // Change session
-        unsafe {
-            std::env::set_var("NIRI_SOCKET", "/run/user/1000/niri.9999.0.sock");
-        }
-
+        // Load with different session
         let mut state2 = DaemonState::default();
-        assert!(!state2.load_scratchpad_state());
+        assert!(!state2.load_scratchpad_state_from(&state_path, "session-B"));
     }
 
     #[test]
