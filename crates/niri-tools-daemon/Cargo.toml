@@ -7,9 +7,12 @@ rust-version.workspace = true
 
 [dependencies]
 niri-tools-common = { path = "../niri-tools-common" }
+regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "process", "fs", "signal", "io-util", "time"] }
 
 [dev-dependencies]
+async-trait = "0.1"
+futures-core = "0.3"
 tempfile = "3"

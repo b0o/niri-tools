@@ -1,3 +1,4 @@
+mod scratchpad;
 mod state;
 
 fn main() {
