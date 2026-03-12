@@ -29,11 +29,17 @@ pub enum Response {
     Error(String),
 }
 
+/// Maximum message size (16 MiB). Protects against malicious/corrupted length prefixes.
+const MAX_MESSAGE_SIZE: u32 = 16 * 1024 * 1024;
+
 /// Serializes a message with bincode and prepends a 4-byte little-endian length prefix.
 pub fn encode_message<T: Serialize>(msg: &T) -> Result<Vec<u8>> {
     let payload = bincode::serde::encode_to_vec(msg, bincode::config::standard())
         .map_err(|e| NiriToolsError::Serialization(e.to_string()))?;
-    let len = payload.len() as u32;
+    let len: u32 = payload
+        .len()
+        .try_into()
+        .map_err(|_| NiriToolsError::Serialization("payload too large".to_string()))?;
     let mut buf = Vec::with_capacity(4 + payload.len());
     buf.extend_from_slice(&len.to_le_bytes());
     buf.extend_from_slice(&payload);
@@ -65,8 +71,13 @@ pub fn decode_message<T: DeserializeOwned>(buf: &[u8]) -> Result<T> {
 pub fn read_message<T: DeserializeOwned>(reader: &mut impl Read) -> Result<T> {
     let mut len_buf = [0u8; 4];
     reader.read_exact(&mut len_buf)?;
-    let len = u32::from_le_bytes(len_buf) as usize;
-    let mut payload = vec![0u8; len];
+    let len = u32::from_le_bytes(len_buf);
+    if len > MAX_MESSAGE_SIZE {
+        return Err(NiriToolsError::Serialization(format!(
+            "message size {len} exceeds maximum {MAX_MESSAGE_SIZE}"
+        )));
+    }
+    let mut payload = vec![0u8; len as usize];
     reader.read_exact(&mut payload)?;
     let (msg, _) = bincode::serde::decode_from_slice(&payload, bincode::config::standard())
         .map_err(|e| NiriToolsError::Serialization(e.to_string()))?;
@@ -77,7 +88,10 @@ pub fn read_message<T: DeserializeOwned>(reader: &mut impl Read) -> Result<T> {
 pub fn write_message<T: Serialize>(writer: &mut impl Write, msg: &T) -> Result<()> {
     let payload = bincode::serde::encode_to_vec(msg, bincode::config::standard())
         .map_err(|e| NiriToolsError::Serialization(e.to_string()))?;
-    let len = payload.len() as u32;
+    let len: u32 = payload
+        .len()
+        .try_into()
+        .map_err(|_| NiriToolsError::Serialization("payload too large".to_string()))?;
     writer.write_all(&len.to_le_bytes())?;
     writer.write_all(&payload)?;
     Ok(())

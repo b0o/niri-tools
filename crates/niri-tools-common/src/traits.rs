@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::pin::Pin;
 
-use futures::Stream;
+use futures_core::Stream;
 
 use crate::error::Result;
 use crate::types::{NiriEvent, OutputInfo, WindowInfo, WorkspaceInfo};
