@@ -1,0 +1,35 @@
+---
+on: push
+name: Test & Lint
+
+env:
+  RUSTFLAGS: "-Dwarnings"
+
+jobs:
+  nix_build_and_test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+
+      - name: Run flake checks
+        run: nix flake check --print-build-logs
+
+  clippy_check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@4f647fc679bcd3b11499ccb42104547c83dabe96 # stable
+        with:
+          toolchain: "1.85.0"
+          components: clippy
+
+      - name: Run Clippy
+        uses: clechasseur/rs-clippy-check@9ef202cdf5c9672a6d795dbb5309f6b62c4ab908 # v3
+        with:
+          args: --all-features
+          toolchain: "1.85.0"
