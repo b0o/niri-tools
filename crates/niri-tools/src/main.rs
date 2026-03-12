@@ -181,7 +181,14 @@ fn main() -> anyhow::Result<()> {
     }
 
     let command = build_command(&cli).expect("unhandled command variant");
-    let response = send_command_with_autostart(&command)?;
+
+    // Daemon management commands should not auto-start the daemon.
+    let response = match &cli.command {
+        Commands::Daemon { .. } => {
+            send_command(&command).map_err(|_| anyhow::anyhow!("Daemon is not running"))?
+        }
+        _ => send_command_with_autostart(&command)?,
+    };
 
     match response {
         Response::Ok => {}
