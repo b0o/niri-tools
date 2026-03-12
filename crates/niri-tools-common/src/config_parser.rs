@@ -113,7 +113,7 @@ fn process_include(
     visited: &mut HashSet<PathBuf>,
     config: &mut LoadedConfig,
 ) {
-    let Some(path_str) = node.get(0).and_then(|v| v.as_string()) else {
+    let Some(path_str) = node.get(0).and_then(|e| e.value().as_string()) else {
         config
             .warnings
             .push("include node missing path argument".to_string());
@@ -173,7 +173,7 @@ fn parse_settings(node: &KdlNode, config: &mut LoadedConfig) {
 /// Parse a `scratchpad` node into a `ScratchpadConfig`.
 fn parse_scratchpad(node: &KdlNode, config: &mut LoadedConfig) {
     // Name is the first argument
-    let Some(name) = node.get(0).and_then(|v| v.as_string()) else {
+    let Some(name) = node.get(0).and_then(|e| e.value().as_string()) else {
         config
             .warnings
             .push("Scratchpad node missing name argument".to_string());
@@ -226,7 +226,7 @@ fn parse_scratchpad(node: &KdlNode, config: &mut LoadedConfig) {
     let mut output_overrides = HashMap::new();
     for child in children.nodes() {
         if child.name().value() == "output" {
-            if let Some(output_name) = child.get(0).and_then(|v| v.as_string()) {
+            if let Some(output_name) = child.get(0).and_then(|e| e.value().as_string()) {
                 let ov = parse_output_override(child);
                 output_overrides.insert(output_name.to_string(), ov);
             }
@@ -254,8 +254,8 @@ fn parse_size_from_doc(doc: &KdlDocument) -> Option<SizeConfig> {
 }
 
 fn parse_size_node(node: &KdlNode) -> Option<SizeConfig> {
-    let width = node.get("width")?.as_string()?.to_string();
-    let height = node.get("height")?.as_string()?.to_string();
+    let width = node.get("width")?.value().as_string()?.to_string();
+    let height = node.get("height")?.value().as_string()?.to_string();
     Some(SizeConfig { width, height })
 }
 
@@ -267,8 +267,8 @@ fn parse_position_from_doc(doc: &KdlDocument) -> Option<PositionConfig> {
 }
 
 fn parse_position_node(node: &KdlNode) -> Option<PositionConfig> {
-    let x = node.get("x")?.as_string()?.to_string();
-    let y = node.get("y")?.as_string()?.to_string();
+    let x = node.get("x")?.value().as_string()?.to_string();
+    let y = node.get("y")?.value().as_string()?.to_string();
     Some(PositionConfig { x, y })
 }
 
@@ -330,13 +330,13 @@ mod tests {
 
     #[test]
     fn parse_settings_watch_true() {
-        let cfg = load_from_str("settings { watch #true; }").unwrap();
+        let cfg = load_from_str("settings { watch true; }").unwrap();
         assert!(cfg.settings.watch_config);
     }
 
     #[test]
     fn parse_settings_watch_false() {
-        let cfg = load_from_str("settings { watch #false; }").unwrap();
+        let cfg = load_from_str("settings { watch false; }").unwrap();
         assert!(!cfg.settings.watch_config);
     }
 
@@ -610,7 +610,7 @@ scratchpad "term" {
         let kdl = r#"
 settings {
     notify "all"
-    watch #true
+    watch true
 }
 
 scratchpad "term" {
