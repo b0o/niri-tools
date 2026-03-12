@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::pin::Pin;
 
-use futures_util::StreamExt;
 use tokio::io::AsyncBufReadExt;
 use tokio::process::Command;
 
@@ -107,23 +106,45 @@ impl NiriClient for RealNiriClient {
             .ok_or_else(|| NiriToolsError::NiriCommand("failed to capture stdout".into()))?;
 
         let reader = tokio::io::BufReader::new(stdout);
-        let lines = tokio_stream::wrappers::LinesStream::new(reader.lines());
+        let lines = reader.lines();
 
-        let stream = lines.filter_map(|line_result: Result<String, std::io::Error>| async move {
-            match line_result {
-                Ok(line) => {
-                    if line.trim().is_empty() {
-                        return None;
-                    }
-                    match serde_json::from_str::<serde_json::Value>(&line) {
-                        Ok(json) => parse_niri_event(&json)
-                            .map(Ok),
-                        Err(e) => Some(Err(NiriToolsError::Serialization(e.to_string()))),
+        // Use unfold to keep `child` alive for the lifetime of the stream.
+        // When the stream is dropped, `child` is dropped too (firing kill_on_drop).
+        // Without this, `child` would be dropped at the end of this function,
+        // immediately killing the niri process and causing an EOF → reconnect loop.
+        let stream = futures_util::stream::unfold(
+            (child, lines),
+            |(child, mut lines)| async move {
+                loop {
+                    match lines.next_line().await {
+                        Ok(Some(line)) => {
+                            if line.trim().is_empty() {
+                                continue;
+                            }
+                            match serde_json::from_str::<serde_json::Value>(&line) {
+                                Ok(json) => {
+                                    if let Some(event) = parse_niri_event(&json) {
+                                        return Some((Ok(event), (child, lines)));
+                                    }
+                                    // Unknown event type, skip and read next line
+                                    continue;
+                                }
+                                Err(e) => {
+                                    return Some((
+                                        Err(NiriToolsError::Serialization(e.to_string())),
+                                        (child, lines),
+                                    ));
+                                }
+                            }
+                        }
+                        Ok(None) => return None, // EOF
+                        Err(e) => {
+                            return Some((Err(NiriToolsError::Io(e)), (child, lines)));
+                        }
                     }
                 }
-                Err(e) => Some(Err(NiriToolsError::Io(e))),
-            }
-        });
+            },
+        );
 
         Ok(Box::pin(stream))
     }

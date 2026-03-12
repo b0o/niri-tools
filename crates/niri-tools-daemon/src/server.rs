@@ -142,8 +142,9 @@ impl DaemonServer {
                             self.notifier.notify_warning("Event Stream", &format!("Event error: {e}"));
                         }
                         None => {
-                            // Stream ended, try to reconnect
-                            self.notifier.notify_warning("Event Stream", "Stream ended, attempting reconnect");
+                            // Stream ended, wait before reconnecting to avoid tight loops
+                            self.notifier.notify_warning("Event Stream", "Stream ended, reconnecting in 2s");
+                            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                             event_stream = match self.niri.subscribe_events().await {
                                 Ok(stream) => Some(stream),
                                 Err(e) => {
