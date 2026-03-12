@@ -142,7 +142,7 @@ async fn run_niri_msg(args: &[&str]) -> niri_tools_common::Result<String> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(NiriToolsError::NiriCommand(format!(
-            "niri msg {args:?} failed: {stderr}"
+            "niri msg {} failed: {stderr}", args.join(" ")
         )));
     }
 

@@ -61,13 +61,6 @@ impl DaemonServer {
         Ok(())
     }
 
-    /// Stop the daemon gracefully.
-    pub async fn stop(&mut self) {
-        self.running = false;
-        let sock_path = socket_path();
-        let _ = std::fs::remove_file(&sock_path);
-    }
-
     /// Populate initial state from niri queries.
     async fn initialize_state(&mut self) -> anyhow::Result<()> {
         // Get windows

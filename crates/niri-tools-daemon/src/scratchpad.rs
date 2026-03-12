@@ -587,7 +587,7 @@ impl<'a> ScratchpadManager<'a> {
                 .and_then(|s| s.window_id)
                 .ok_or_else(|| {
                     niri_tools_common::NiriToolsError::Other(format!(
-                        "Scratchpad '{name}' has no window"
+                        "Scratchpad '{name}' has no active window. Use 'toggle {name}' to spawn it."
                     ))
                 })?;
             let config = self
@@ -644,7 +644,7 @@ impl<'a> ScratchpadManager<'a> {
             }
 
             Err(niri_tools_common::NiriToolsError::Other(
-                "No scratchpad found".to_string(),
+                "No scratchpad to act on. Specify a scratchpad name or focus a scratchpad window first.".to_string(),
             ))
         }
     }

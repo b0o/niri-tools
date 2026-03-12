@@ -6,6 +6,6 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-niri-tools-common = { path = "../niri-tools-common" }
-clap = { version = "4", features = ["derive"] }
 anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+niri-tools-common = { path = "../niri-tools-common" }

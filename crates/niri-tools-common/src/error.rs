@@ -2,7 +2,7 @@
 pub enum NiriToolsError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    #[error("Serialization error: {0}")]
+    #[error("Communication error: {0}")]
     Serialization(String),
     #[error("Niri command failed: {0}")]
     NiriCommand(String),

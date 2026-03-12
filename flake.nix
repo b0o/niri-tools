@@ -31,7 +31,10 @@
         niri-tools = rustPlatform.buildRustPackage {
           pname = "niri-tools";
           version = "0.1.0";
-          src = ./.;
+          src = pkgs.lib.cleanSourceWith {
+            src = ./.;
+            filter = path: _type: builtins.baseNameOf path != "target";
+          };
           cargoLock.lockFile = ./Cargo.lock;
         };
       in {

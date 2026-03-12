@@ -154,7 +154,7 @@ fn parse_settings(node: &KdlNode, config: &mut LoadedConfig) {
                 other => {
                     config
                         .warnings
-                        .push(format!("Unknown notify level \"{other}\", using default"));
+                        .push(format!("Unknown notify level \"{other}\". Valid values: all, error, warning, none. Using \"all\"."));
                     config.settings.notify_level = NotifyLevel::All;
                 }
             }
