@@ -104,6 +104,9 @@ pub fn matches_config(window: &WindowInfo, config: &ScratchpadConfig) -> bool {
     app_id_matches && title_matches
 }
 
+// TODO: Replace string-prefix-based regex detection with an explicit `regex=true`
+// property on app-id/title in the KDL config. e.g.: `app-id "google-chrome" regex=true`
+// This avoids ambiguity and is cleaner than inferring from `/` or `^` prefixes.
 fn matches_pattern(pattern: &str, value: &str) -> bool {
     if let Some(regex_str) = pattern.strip_prefix('/') {
         // Regex pattern: strip leading '/'
