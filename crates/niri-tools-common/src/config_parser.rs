@@ -164,6 +164,8 @@ fn parse_settings(node: &KdlNode, config: &mut LoadedConfig) {
     if let Some(watch_val) = children.get_arg("watch") {
         if let Some(b) = watch_val.as_bool() {
             config.settings.watch_config = b;
+        } else if let Some(s) = watch_val.as_string() {
+            config.settings.watch_config = s == "true";
         }
     }
 }

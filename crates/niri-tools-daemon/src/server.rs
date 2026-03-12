@@ -35,7 +35,6 @@ impl DaemonServer {
         self.running = true;
 
         // Load initial config
-        tracing::info!("loading config");
         self.reload_config(false);
         tracing::info!(
             scratchpads = self.state.scratchpad_configs.len(),
@@ -330,12 +329,15 @@ impl DaemonServer {
 
     /// Load (or reload) KDL config. Updates state with new scratchpad configs.
     pub fn reload_config(&mut self, is_reload: bool) {
+        let config_path = niri_tools_common::paths::default_config_path();
+        tracing::info!(path = %config_path.display(), "loading config");
+
         let loaded = match load_config(None) {
             Ok(cfg) => cfg,
             Err(e) => {
-                let msg = format!("Config error: {e}");
+                tracing::error!(%e, "config error");
                 if is_reload {
-                    self.notifier.notify_error("Config", &msg);
+                    self.notifier.notify_error("Config", &format!("Config error: {e}"));
                 }
                 return;
             }
@@ -343,6 +345,7 @@ impl DaemonServer {
 
         // Apply warnings
         for warning in &loaded.warnings {
+            tracing::warn!(warning, "config warning");
             self.notifier.notify_warning("Config", warning);
         }
 
