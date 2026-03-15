@@ -15,7 +15,7 @@ pub fn default_config_path() -> PathBuf {
     });
     PathBuf::from(config_dir)
         .join("niri")
-        .join("scratchpads.kdl")
+        .join("niri-tools.kdl")
 }
 
 pub fn state_file_path() -> PathBuf {

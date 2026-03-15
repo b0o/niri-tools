@@ -21,7 +21,7 @@ pub struct LoadedConfig {
 /// Load configuration from a KDL file.
 ///
 /// If `config_path` is `None`, uses the default config path
-/// (`~/.config/niri/scratchpads.kdl`).
+/// (`~/.config/niri/niri-tools.kdl`).
 ///
 /// Missing config files at the default path result in default settings with no
 /// scratchpads. Missing config files at an explicit path return an error.
@@ -297,7 +297,7 @@ mod tests {
     /// Helper: write a KDL string to a tempfile and parse it via load_config.
     fn load_from_str(content: &str) -> Result<LoadedConfig, NiriToolsError> {
         let dir = TempDir::new().unwrap();
-        let path = dir.path().join("scratchpads.kdl");
+        let path = dir.path().join("niri-tools.kdl");
         fs::write(&path, content).unwrap();
         load_config(Some(&path))
     }
@@ -651,7 +651,7 @@ scratchpad "dms-settings" {
     fn default_config_path_uses_xdg_config_home() {
         unsafe { std::env::set_var("XDG_CONFIG_HOME", "/custom/config") };
         let path = crate::paths::default_config_path();
-        assert_eq!(path, PathBuf::from("/custom/config/niri/scratchpads.kdl"));
+        assert_eq!(path, PathBuf::from("/custom/config/niri/niri-tools.kdl"));
         unsafe { std::env::remove_var("XDG_CONFIG_HOME") };
     }
 
@@ -662,7 +662,7 @@ scratchpad "dms-settings" {
         let path = crate::paths::default_config_path();
         assert_eq!(
             path,
-            PathBuf::from("/home/testuser/.config/niri/scratchpads.kdl")
+            PathBuf::from("/home/testuser/.config/niri/niri-tools.kdl")
         );
     }
 }
