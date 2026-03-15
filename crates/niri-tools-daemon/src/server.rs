@@ -281,6 +281,17 @@ impl DaemonServer {
                     Err(e) => Response::Error(e.to_string()),
                 }
             }
+
+            Command::SmartFocus { id } => {
+                let mut mgr = ScratchpadManager::new(&mut self.state, self.niri.as_ref());
+                match mgr.smart_focus(id).await {
+                    Ok(()) => Response::Ok,
+                    Err(e) => {
+                        self.notifier.notify_warning("Smart Focus", &e.to_string());
+                        Response::Error(e.to_string())
+                    }
+                }
+            }
         }
     }
 
@@ -605,6 +616,20 @@ mod tests {
         // No focused window, so hide is a no-op
         let response = server.dispatch_command(Command::Hide).await;
         assert_eq!(response, Response::Ok);
+    }
+
+    #[tokio::test]
+    async fn dispatch_smart_focus_nonexistent_window_returns_error() {
+        let mut server = make_server();
+        let response = server
+            .dispatch_command(Command::SmartFocus { id: 99999 })
+            .await;
+        match response {
+            Response::Error(msg) => {
+                assert!(msg.contains("99999"));
+            }
+            other => panic!("Expected Error, got {other:?}"),
+        }
     }
 
     // -- get_status tests --

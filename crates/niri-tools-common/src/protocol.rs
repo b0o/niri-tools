@@ -11,6 +11,7 @@ pub enum Command {
     ToggleFloat { name: Option<String> },
     Float { name: Option<String> },
     Tile { name: Option<String> },
+    SmartFocus { id: u64 },
     DaemonStop,
     DaemonRestart,
     DaemonStatus,
@@ -153,6 +154,14 @@ mod tests {
         let cmd = Command::Tile {
             name: Some("editor".to_string()),
         };
+        let encoded = encode_message(&cmd).unwrap();
+        let decoded: Command = decode_message(&encoded).unwrap();
+        assert_eq!(cmd, decoded);
+    }
+
+    #[test]
+    fn command_smart_focus_roundtrip() {
+        let cmd = Command::SmartFocus { id: 42 };
         let encoded = encode_message(&cmd).unwrap();
         let decoded: Command = decode_message(&encoded).unwrap();
         assert_eq!(cmd, decoded);

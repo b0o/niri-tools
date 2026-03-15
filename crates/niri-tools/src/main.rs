@@ -23,6 +23,12 @@ enum Commands {
         #[command(subcommand)]
         command: ScratchpadCommand,
     },
+    /// Focus a window by ID with scratchpad-aware behavior
+    SmartFocus {
+        /// Window ID to focus
+        #[arg(long)]
+        id: u64,
+    },
 }
 
 #[derive(Subcommand, Debug, PartialEq)]
@@ -84,6 +90,7 @@ fn build_command(cli: &Cli) -> Option<Command> {
             ScratchpadCommand::Float { name } => Some(Command::Float { name: name.clone() }),
             ScratchpadCommand::Tile { name } => Some(Command::Tile { name: name.clone() }),
         },
+        Commands::SmartFocus { id } => Some(Command::SmartFocus { id: *id }),
     }
 }
 
@@ -369,6 +376,17 @@ mod tests {
     }
 
     #[test]
+    fn parse_smart_focus() {
+        let cli = Cli::try_parse_from(["niri-tools", "smart-focus", "--id", "42"]).unwrap();
+        assert_eq!(cli.command, Commands::SmartFocus { id: 42 });
+    }
+
+    #[test]
+    fn parse_smart_focus_missing_id_is_error() {
+        assert!(Cli::try_parse_from(["niri-tools", "smart-focus"]).is_err());
+    }
+
+    #[test]
     fn parse_no_args_is_error() {
         assert!(Cli::try_parse_from(["niri-tools"]).is_err());
     }
@@ -478,5 +496,11 @@ mod tests {
                 name: Some("y".to_string())
             })
         );
+    }
+
+    #[test]
+    fn build_command_smart_focus() {
+        let cli = Cli::try_parse_from(["niri-tools", "smart-focus", "--id", "99"]).unwrap();
+        assert_eq!(build_command(&cli), Some(Command::SmartFocus { id: 99 }));
     }
 }
