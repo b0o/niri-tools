@@ -33,7 +33,7 @@
           version = "0.1.0";
           src = pkgs.lib.cleanSourceWith {
             src = ./.;
-            filter = path: _type: builtins.baseNameOf path != "target";
+            filter = path: _type: baseNameOf path != "target";
           };
           cargoLock.lockFile = ./Cargo.lock;
           buildType = "release";
@@ -50,6 +50,7 @@
           buildInputs = [
             rust
             pkgs.dprint
+            niri-tools
           ];
         };
       }
