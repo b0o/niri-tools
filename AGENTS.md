@@ -77,7 +77,7 @@ Run `cat crates/*/Cargo.toml` to see current dependencies for each crate.
 
 - **Trait-based dependency injection**: `NiriClient` and `Notifier` are traits (`crates/niri-tools-common/src/traits.rs`). The daemon uses real implementations; tests use mocks. This is the primary testing strategy.
 - **IPC wire format**: Length-prefixed bincode over a Unix domain socket. See `protocol.rs` for `encode_message`/`decode_message`.
-- **Config format**: KDL (not YAML). The Python version uses YAML. Config lives at `~/.config/niri/scratchpads.kdl`.
+- **Config format**: KDL (not YAML). The Python version uses YAML. Config lives at `~/.config/niri/niri-tools.kdl`.
 - **State persistence**: Scratchpad-to-window mappings are saved to `$XDG_RUNTIME_DIR/niri-tools-state.json` so the daemon can recover after restarts.
 - **Auto-start**: The CLI spawns the daemon via `niri msg action spawn` if the socket is not available (except for daemon management commands like `stop`/`status`).
 
@@ -166,7 +166,7 @@ Run `git log --oneline -20` to see recent examples.
 
 All runtime paths are XDG-compliant. See `crates/niri-tools-common/src/paths.rs` for the canonical path logic:
 - Socket: `$NIRI_TOOLS_SOCKET` or `$XDG_RUNTIME_DIR/niri-tools.sock`
-- Config: `$XDG_CONFIG_HOME/niri/scratchpads.kdl`
+- Config: `$XDG_CONFIG_HOME/niri/niri-tools.kdl`
 - State: `$XDG_RUNTIME_DIR/niri-tools-state.json`
 
 ## Testing
