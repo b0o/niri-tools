@@ -647,16 +647,16 @@ scratchpad "dms-settings" {
 
     // ── paths::default_config_path ────────────────────────────────
 
+    /// Combined into a single test to avoid env-var race conditions
+    /// when tests run in parallel (both tests mutate XDG_CONFIG_HOME).
     #[test]
-    fn default_config_path_uses_xdg_config_home() {
+    fn default_config_path_respects_xdg_and_falls_back() {
+        // Case 1: XDG_CONFIG_HOME is set
         unsafe { std::env::set_var("XDG_CONFIG_HOME", "/custom/config") };
         let path = crate::paths::default_config_path();
         assert_eq!(path, PathBuf::from("/custom/config/niri/niri-tools.kdl"));
-        unsafe { std::env::remove_var("XDG_CONFIG_HOME") };
-    }
 
-    #[test]
-    fn default_config_path_falls_back_to_home_dotconfig() {
+        // Case 2: XDG_CONFIG_HOME is unset, falls back to $HOME/.config
         unsafe { std::env::remove_var("XDG_CONFIG_HOME") };
         unsafe { std::env::set_var("HOME", "/home/testuser") };
         let path = crate::paths::default_config_path();
