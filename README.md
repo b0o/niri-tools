@@ -55,6 +55,14 @@ scratchpad "browser" {
   size width="80%" height="80%"
   position x="50%" y="50%"
 }
+
+scratchpad "btop" {
+  app-id "com.mitchellh.ghostty"
+  command "ghostty" "-e" "btop"
+  title "/btop/"
+  size width="70%" height="70%"
+  position x="50%" y="50%"
+}
 ```
 
 ### Scratchpad options
@@ -63,7 +71,7 @@ scratchpad "browser" {
 | ---------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `app-id`   | Wayland app ID to match. Prefix with `/` for regex (e.g. `/google-chrome.*`).                                                |
 | `title`    | Window title to match. Prefix with `/` or `^` for regex.                                                                     |
-| `command`  | Command to spawn the window. Supports multiple arguments.                                                                    |
+| `command`  | Command to spawn the window. Each argument is a separate quoted string (e.g. `command "ghostty" "-e" "btop"`). |
 | `size`     | Window size. Accepts percentages (`"60%"`) or pixels (`"800"`).                                                              |
 | `position` | Window position. `"0%"` = top/left edge, `"50%"` = centered, `"100%"` = bottom/right edge. The window stays fully on screen. |
 
