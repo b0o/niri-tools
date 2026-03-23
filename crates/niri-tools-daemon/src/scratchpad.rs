@@ -428,12 +428,13 @@ impl<'a> ScratchpadManager<'a> {
         Ok(())
     }
 
-    /// Called when a new window opens. Checks pending_spawns for a config match.
+    /// Called when a new window opens. Checks pending_spawns first, then
+    /// auto-adopt configs for scratchpads that should adopt matching windows.
     pub async fn handle_window_opened(
         &mut self,
         window: &WindowInfo,
     ) -> niri_tools_common::Result<()> {
-        // Check pending spawns
+        // Check pending spawns first (explicit toggle takes priority)
         let matching_name = self
             .state
             .pending_spawns
@@ -446,9 +447,15 @@ impl<'a> ScratchpadManager<'a> {
             })
             .cloned();
 
-        let name = match matching_name {
-            Some(n) => n,
-            None => return Ok(()),
+        // If no pending spawn match, check auto-adopt configs
+        let (name, from_pending) = match matching_name {
+            Some(n) => (n, true),
+            None => {
+                match self.find_auto_adopt(window) {
+                    Some(n) => (n, false),
+                    None => return Ok(()),
+                }
+            }
         };
 
         let config = match self.state.scratchpad_configs.get(&name).cloned() {
@@ -456,8 +463,10 @@ impl<'a> ScratchpadManager<'a> {
             None => return Ok(()),
         };
 
-        // Remove from pending
-        self.state.pending_spawns.remove(&name);
+        // Remove from pending if it was a pending spawn
+        if from_pending {
+            self.state.pending_spawns.remove(&name);
+        }
 
         // Register window
         self.state.register_scratchpad_window(&name, window.id);
@@ -473,6 +482,32 @@ impl<'a> ScratchpadManager<'a> {
         let _ = self.state.save_scratchpad_state();
 
         Ok(())
+    }
+
+    /// Find an auto-adopt config for a newly opened window.
+    ///
+    /// Returns the name of the first scratchpad config where:
+    /// - `auto_adopt` is true
+    /// - The window matches the config's app_id/title criteria
+    /// - The scratchpad does not already have an active window
+    fn find_auto_adopt(&self, window: &WindowInfo) -> Option<String> {
+        self.state
+            .scratchpad_configs
+            .iter()
+            .find(|(name, cfg)| {
+                cfg.auto_adopt
+                    && matches_config(window, cfg)
+                    && !self.scratchpad_has_window(name)
+            })
+            .map(|(name, _)| name.clone())
+    }
+
+    /// Check if a scratchpad currently has an active window.
+    fn scratchpad_has_window(&self, name: &str) -> bool {
+        self.state
+            .scratchpads
+            .get(name)
+            .is_some_and(|sp| sp.window_id.is_some())
     }
 
     // -- Helper methods --
@@ -792,6 +827,7 @@ mod tests {
             command: Some(vec!["ghostty".to_string()]),
             app_id: Some("ghostty".to_string()),
             title: None,
+            auto_adopt: false,
             size: Some(SizeConfig {
                 width: "60%".to_string(),
                 height: "60%".to_string(),
@@ -930,6 +966,7 @@ mod tests {
             command: Some(vec!["foot".to_string()]),
             app_id: Some("foot".to_string()),
             title: None,
+            auto_adopt: false,
             size: Some(SizeConfig {
                 width: "800".to_string(),
                 height: "600".to_string(),
@@ -966,6 +1003,7 @@ mod tests {
             command: Some(vec!["foot".to_string()]),
             app_id: Some("foot".to_string()),
             title: None,
+            auto_adopt: false,
             size: Some(SizeConfig {
                 width: "60%".to_string(),
                 height: "60%".to_string(),
@@ -991,6 +1029,7 @@ mod tests {
             command: None,
             app_id: None,
             title: None,
+            auto_adopt: false,
             size: None,
             position: None,
             output_overrides: HashMap::new(),
@@ -1029,6 +1068,7 @@ mod tests {
             command: None,
             app_id: Some("/ghost.*".to_string()),
             title: None,
+            auto_adopt: false,
             size: None,
             position: None,
             output_overrides: HashMap::new(),
@@ -1047,6 +1087,7 @@ mod tests {
             command: None,
             app_id: None,
             title: Some("^Terminal.*".to_string()),
+            auto_adopt: false,
             size: None,
             position: None,
             output_overrides: HashMap::new(),
@@ -1067,6 +1108,7 @@ mod tests {
             command: None,
             app_id: None,
             title: None,
+            auto_adopt: false,
             size: None,
             position: None,
             output_overrides: HashMap::new(),
@@ -1082,6 +1124,7 @@ mod tests {
             command: None,
             app_id: Some("ghostty".to_string()),
             title: Some("Terminal".to_string()),
+            auto_adopt: false,
             size: None,
             position: None,
             output_overrides: HashMap::new(),
@@ -1619,5 +1662,159 @@ mod tests {
             a == "focus-window" && args.contains(&"42".to_string())
         }));
         assert!(!state.scratchpads.get("term").unwrap().visible);
+    }
+
+    // -- auto-adopt tests --
+
+    fn make_auto_adopt_config(name: &str, app_id: &str) -> ScratchpadConfig {
+        ScratchpadConfig {
+            name: name.to_string(),
+            command: None,
+            app_id: Some(app_id.to_string()),
+            title: None,
+            auto_adopt: true,
+            size: Some(SizeConfig {
+                width: "60%".to_string(),
+                height: "60%".to_string(),
+            }),
+            position: Some(PositionConfig {
+                x: "50%".to_string(),
+                y: "50%".to_string(),
+            }),
+            output_overrides: HashMap::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn handle_window_opened_auto_adopt_adopts_matching_window() {
+        let mut state = setup_state();
+        state.scratchpad_configs.insert(
+            "browser".to_string(),
+            make_auto_adopt_config("browser", "firefox"),
+        );
+
+        let window = make_window(42, "firefox", false, false, Some(1));
+        state.windows.insert(42, window.clone());
+
+        let niri = MockNiriClient::new();
+
+        {
+            let mut mgr = ScratchpadManager::new(&mut state, &niri);
+            mgr.handle_window_opened(&window).await.unwrap();
+        }
+
+        // Should be registered as scratchpad
+        assert_eq!(state.get_scratchpad_for_window(42), Some("browser"));
+        assert!(state.scratchpads.get("browser").unwrap().visible);
+
+        let actions = niri.get_actions();
+        // Should configure: float + set size + set height + position + focus
+        assert!(actions.iter().any(|(action, _)| action == "move-window-to-floating"));
+        assert!(actions.iter().any(|(action, args)| {
+            action == "focus-window" && args.contains(&"42".to_string())
+        }));
+    }
+
+    #[tokio::test]
+    async fn handle_window_opened_auto_adopt_skips_when_scratchpad_has_window() {
+        let mut state = setup_state();
+        state.scratchpad_configs.insert(
+            "browser".to_string(),
+            make_auto_adopt_config("browser", "firefox"),
+        );
+
+        // Scratchpad already has a window
+        let existing = make_window(10, "firefox", false, true, Some(1));
+        state.windows.insert(10, existing);
+        state.register_scratchpad_window("browser", 10);
+
+        // New matching window opens
+        let window = make_window(42, "firefox", false, false, Some(1));
+        state.windows.insert(42, window.clone());
+
+        let niri = MockNiriClient::new();
+
+        {
+            let mut mgr = ScratchpadManager::new(&mut state, &niri);
+            mgr.handle_window_opened(&window).await.unwrap();
+        }
+
+        // Should NOT be adopted — scratchpad already has a window
+        assert!(state.get_scratchpad_for_window(42).is_none());
+        // Original window still registered
+        assert_eq!(state.get_scratchpad_for_window(10), Some("browser"));
+
+        let actions = niri.get_actions();
+        assert!(actions.is_empty());
+    }
+
+    #[tokio::test]
+    async fn handle_window_opened_auto_adopt_false_does_not_adopt() {
+        let mut state = setup_state();
+        // auto_adopt is false (default make_config)
+        state.scratchpad_configs.insert("term".to_string(), make_config("term"));
+
+        let window = make_window(42, "ghostty", false, false, Some(1));
+        state.windows.insert(42, window.clone());
+
+        let niri = MockNiriClient::new();
+
+        {
+            let mut mgr = ScratchpadManager::new(&mut state, &niri);
+            mgr.handle_window_opened(&window).await.unwrap();
+        }
+
+        // Should NOT be adopted — auto_adopt is false
+        assert!(state.get_scratchpad_for_window(42).is_none());
+        let actions = niri.get_actions();
+        assert!(actions.is_empty());
+    }
+
+    #[tokio::test]
+    async fn handle_window_opened_auto_adopt_no_match_does_nothing() {
+        let mut state = setup_state();
+        state.scratchpad_configs.insert(
+            "browser".to_string(),
+            make_auto_adopt_config("browser", "firefox"),
+        );
+
+        // Window with different app_id
+        let window = make_window(42, "ghostty", false, false, Some(1));
+        state.windows.insert(42, window.clone());
+
+        let niri = MockNiriClient::new();
+
+        {
+            let mut mgr = ScratchpadManager::new(&mut state, &niri);
+            mgr.handle_window_opened(&window).await.unwrap();
+        }
+
+        assert!(state.get_scratchpad_for_window(42).is_none());
+        let actions = niri.get_actions();
+        assert!(actions.is_empty());
+    }
+
+    #[tokio::test]
+    async fn handle_window_opened_pending_spawn_takes_priority_over_auto_adopt() {
+        let mut state = setup_state();
+        // Config has both command and auto_adopt
+        let mut config = make_auto_adopt_config("term", "ghostty");
+        config.command = Some(vec!["ghostty".to_string()]);
+        state.scratchpad_configs.insert("term".to_string(), config);
+        state.pending_spawns.insert("term".to_string());
+
+        let window = make_window(42, "ghostty", false, false, Some(1));
+        state.windows.insert(42, window.clone());
+
+        let niri = MockNiriClient::new();
+
+        {
+            let mut mgr = ScratchpadManager::new(&mut state, &niri);
+            mgr.handle_window_opened(&window).await.unwrap();
+        }
+
+        // Should be registered via pending_spawns path
+        assert_eq!(state.get_scratchpad_for_window(42), Some("term"));
+        assert!(!state.pending_spawns.contains("term"));
     }
 }

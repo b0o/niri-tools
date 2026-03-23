@@ -206,6 +206,20 @@ fn parse_scratchpad(node: &KdlNode, config: &mut LoadedConfig) {
         .and_then(|v| v.as_string())
         .map(String::from);
 
+    // auto-adopt (optional, default false)
+    let auto_adopt = children
+        .get_arg("auto-adopt")
+        .map(|v| {
+            if let Some(b) = v.as_bool() {
+                b
+            } else if let Some(s) = v.as_string() {
+                s == "true"
+            } else {
+                false
+            }
+        })
+        .unwrap_or(false);
+
     // command: all positional arguments of the `command` node
     let command = children.get("command").map(|cmd_node| {
         cmd_node
@@ -238,6 +252,7 @@ fn parse_scratchpad(node: &KdlNode, config: &mut LoadedConfig) {
         command,
         app_id,
         title,
+        auto_adopt,
         size,
         position,
         output_overrides,
@@ -642,7 +657,72 @@ scratchpad "dms-settings" {
         assert_eq!(cfg.scratchpads.len(), 2);
         assert!(cfg.scratchpads.contains_key("term"));
         assert!(cfg.scratchpads.contains_key("dms-settings"));
+        // auto_adopt defaults to false
+        assert!(!cfg.scratchpads.get("term").unwrap().auto_adopt);
+        assert!(!cfg.scratchpads.get("dms-settings").unwrap().auto_adopt);
         assert!(cfg.warnings.is_empty());
+    }
+
+    // ── match field parsing ─────────────────────────────────────
+
+    #[test]
+    fn parse_scratchpad_auto_adopt_true() {
+        let kdl = r#"
+scratchpad "browser" {
+    app-id "firefox"
+    auto-adopt true
+}
+"#;
+        let cfg = load_from_str(kdl).unwrap();
+        let sp = cfg.scratchpads.get("browser").unwrap();
+        assert!(sp.auto_adopt);
+    }
+
+    #[test]
+    fn parse_scratchpad_auto_adopt_false() {
+        let kdl = r#"
+scratchpad "term" {
+    app-id "ghostty"
+    auto-adopt false
+}
+"#;
+        let cfg = load_from_str(kdl).unwrap();
+        let sp = cfg.scratchpads.get("term").unwrap();
+        assert!(!sp.auto_adopt);
+    }
+
+    #[test]
+    fn parse_scratchpad_auto_adopt_defaults_to_false() {
+        let kdl = r#"
+scratchpad "term" {
+    app-id "ghostty"
+    command "ghostty"
+}
+"#;
+        let cfg = load_from_str(kdl).unwrap();
+        let sp = cfg.scratchpads.get("term").unwrap();
+        assert!(!sp.auto_adopt);
+    }
+
+    #[test]
+    fn parse_scratchpad_auto_adopt_with_all_fields() {
+        let kdl = r#"
+scratchpad "browser" {
+    app-id "firefox"
+    title "^Mozilla.*"
+    auto-adopt true
+    size width="80%" height="80%"
+    position x="10%" y="10%"
+}
+"#;
+        let cfg = load_from_str(kdl).unwrap();
+        let sp = cfg.scratchpads.get("browser").unwrap();
+        assert!(sp.auto_adopt);
+        assert_eq!(sp.app_id.as_deref(), Some("firefox"));
+        assert_eq!(sp.title.as_deref(), Some("^Mozilla.*"));
+        assert!(sp.size.is_some());
+        assert!(sp.position.is_some());
+        assert!(sp.command.is_none());
     }
 
     // ── paths::default_config_path ────────────────────────────────

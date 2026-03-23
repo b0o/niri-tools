@@ -6,6 +6,7 @@ pub struct ScratchpadConfig {
     pub command: Option<Vec<String>>,
     pub app_id: Option<String>,
     pub title: Option<String>,
+    pub auto_adopt: bool,
     pub size: Option<SizeConfig>,
     pub position: Option<PositionConfig>,
     pub output_overrides: HashMap<String, OutputOverride>,
@@ -103,6 +104,7 @@ mod tests {
             command: Some(vec!["foot".to_string()]),
             app_id: Some("foot".to_string()),
             title: None,
+            auto_adopt: false,
             size: Some(SizeConfig {
                 width: "60%".to_string(),
                 height: "60%".to_string(),
@@ -141,6 +143,7 @@ mod tests {
             command: None,
             app_id: Some("firefox".to_string()),
             title: None,
+            auto_adopt: false,
             size: None,
             position: None,
             output_overrides: overrides,
