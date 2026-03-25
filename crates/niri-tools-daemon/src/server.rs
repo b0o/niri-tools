@@ -19,6 +19,7 @@ pub struct DaemonServer {
     niri: Box<dyn NiriClient>,
     notifier: Box<dyn Notifier>,
     ui_tx: Option<tokio::sync::mpsc::Sender<UiCommand>>,
+    daemon_rx: Option<tokio::sync::mpsc::Receiver<Command>>,
     running: bool,
 }
 
@@ -33,6 +34,7 @@ impl DaemonServer {
             niri,
             notifier,
             ui_tx: Some(ui_tx),
+            daemon_rx: None,
             running: false,
         }
     }
@@ -48,7 +50,19 @@ impl DaemonServer {
             niri,
             notifier,
             ui_tx: None,
+            daemon_rx: None,
             running: false,
+        }
+    }
+
+    /// Start the daemon with a reverse command channel from the GTK thread.
+    pub async fn start_with_daemon_rx(
+        &mut self,
+        daemon_rx: tokio::sync::mpsc::Receiver<Command>,
+    ) {
+        self.daemon_rx = Some(daemon_rx);
+        if let Err(e) = self.start().await {
+            tracing::error!(%e, "daemon server error");
         }
     }
 
@@ -205,6 +219,20 @@ impl DaemonServer {
                     }
                 }
 
+                // Commands from the GTK thread (mode key actions)
+                cmd = async {
+                    if let Some(ref mut rx) = self.daemon_rx {
+                        rx.recv().await
+                    } else {
+                        std::future::pending::<Option<Command>>().await
+                    }
+                } => {
+                    if let Some(command) = cmd {
+                        tracing::debug!(?command, "daemon command from GTK thread");
+                        let _ = self.dispatch_command(command).await;
+                    }
+                }
+
                 // Signals
                 _ = sigterm.recv() => {
                     tracing::info!("received SIGTERM, shutting down");
@@ -320,6 +348,7 @@ impl DaemonServer {
                 self.send_ui_command(UiCommand::ModeShow {
                     mode,
                     mode_config,
+                    mode_configs: self.state.mode_configs.clone(),
                     ui_config: self.state.ui_config.clone(),
                 });
                 Response::Ok
@@ -333,6 +362,7 @@ impl DaemonServer {
                 self.send_ui_command(UiCommand::ModeToggle {
                     mode,
                     mode_config,
+                    mode_configs: self.state.mode_configs.clone(),
                     ui_config: self.state.ui_config.clone(),
                 });
                 Response::Ok

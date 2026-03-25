@@ -1,4 +1,5 @@
 mod events;
+mod mode;
 mod niri;
 mod notify;
 mod scratchpad;
@@ -43,16 +44,20 @@ fn main() {
         // Leak the guard so the hold persists for the process lifetime.
         std::mem::forget(app.hold());
 
-        // Create a channel for tokio→GTK UI command forwarding.
-        let (ui_tx, mut ui_rx) = tokio::sync::mpsc::channel::<ui::UiCommand>(64);
-
         // Load config for initial UI setup.
         let ui_config = load_config(None)
             .map(|c| c.ui_config)
             .unwrap_or_default();
 
+        // Create channels:
+        // ui_tx/ui_rx: tokio → GTK (UI commands like ModeShow)
+        // daemon_tx/daemon_rx: GTK → tokio (commands from mode key actions)
+        let (ui_tx, mut ui_rx) = tokio::sync::mpsc::channel::<ui::UiCommand>(64);
+        let (daemon_tx, daemon_rx) =
+            tokio::sync::mpsc::channel::<niri_tools_common::protocol::Command>(64);
+
         // Create the UI manager (owns GTK windows, starts hidden).
-        let ui_manager = ui::UiManager::new(app, &ui_config);
+        let ui_manager = ui::UiManager::new(app, &ui_config, daemon_tx);
 
         // Bridge: receive UI commands from tokio and dispatch on the GTK thread.
         glib::spawn_future_local(async move {
@@ -69,9 +74,9 @@ fn main() {
                 Box::new(RealNotifier::new(NotifyLevel::All));
 
             let mut server = server::DaemonServer::new(niri_client, notifier, ui_tx);
-            if let Err(e) = server.start().await {
-                tracing::error!(%e, "daemon server error");
-            }
+
+            // Start the server and also listen for reverse commands from the GTK thread
+            server.start_with_daemon_rx(daemon_rx).await;
 
             // Server exited (stop command received or error).
             // Quit the GTK application from the main thread.
