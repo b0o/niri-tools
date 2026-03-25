@@ -23,6 +23,11 @@ enum Commands {
         #[command(subcommand)]
         command: ScratchpadCommand,
     },
+    /// Manage mode overlays
+    Mode {
+        #[command(subcommand)]
+        command: ModeCommand,
+    },
     /// Focus a window by ID with scratchpad-aware behavior
     SmartFocus {
         /// Window ID to focus
@@ -41,6 +46,22 @@ enum DaemonCommand {
     Restart,
     /// Show daemon status
     Status,
+}
+
+#[derive(Subcommand, Debug, PartialEq)]
+enum ModeCommand {
+    /// Show a mode overlay
+    Show {
+        /// Mode name (default mode if omitted)
+        name: Option<String>,
+    },
+    /// Hide the mode overlay
+    Hide,
+    /// Toggle a mode overlay
+    Toggle {
+        /// Mode name (default mode if omitted)
+        name: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug, PartialEq)]
@@ -67,6 +88,8 @@ enum ScratchpadCommand {
         /// Scratchpad name
         name: Option<String>,
     },
+    /// Open the scratchpad picker
+    Pick,
 }
 
 /// Convert CLI arguments to a protocol [`Command`].
@@ -81,6 +104,11 @@ fn build_command(cli: &Cli) -> Option<Command> {
             DaemonCommand::Status => Some(Command::DaemonStatus),
             DaemonCommand::Start => None,
         },
+        Commands::Mode { command } => Some(match command {
+            ModeCommand::Show { name } => Command::ModeShow { mode: name.clone() },
+            ModeCommand::Hide => Command::ModeHide,
+            ModeCommand::Toggle { name } => Command::ModeToggle { mode: name.clone() },
+        }),
         Commands::Scratchpad { command } => match command {
             ScratchpadCommand::Toggle { name } => Some(Command::Toggle { name: name.clone() }),
             ScratchpadCommand::Hide => Some(Command::Hide),
@@ -89,6 +117,7 @@ fn build_command(cli: &Cli) -> Option<Command> {
             }
             ScratchpadCommand::Float { name } => Some(Command::Float { name: name.clone() }),
             ScratchpadCommand::Tile { name } => Some(Command::Tile { name: name.clone() }),
+            ScratchpadCommand::Pick => Some(Command::ScratchpadPick),
         },
         Commands::SmartFocus { id } => Some(Command::SmartFocus { id: *id }),
     }
@@ -373,6 +402,103 @@ mod tests {
                 command: ScratchpadCommand::Tile { name: None }
             }
         );
+    }
+
+    // ── Mode CLI parsing tests ───────────────────────────────────────
+
+    #[test]
+    fn parse_mode_show_with_name() {
+        let cli = Cli::try_parse_from(["niri-tools", "mode", "show", "root"]).unwrap();
+        assert_eq!(
+            cli.command,
+            Commands::Mode {
+                command: ModeCommand::Show {
+                    name: Some("root".to_string())
+                }
+            }
+        );
+    }
+
+    #[test]
+    fn parse_mode_show_without_name() {
+        let cli = Cli::try_parse_from(["niri-tools", "mode", "show"]).unwrap();
+        assert_eq!(
+            cli.command,
+            Commands::Mode {
+                command: ModeCommand::Show { name: None }
+            }
+        );
+    }
+
+    #[test]
+    fn parse_mode_hide() {
+        let cli = Cli::try_parse_from(["niri-tools", "mode", "hide"]).unwrap();
+        assert_eq!(
+            cli.command,
+            Commands::Mode {
+                command: ModeCommand::Hide
+            }
+        );
+    }
+
+    #[test]
+    fn parse_mode_toggle_with_name() {
+        let cli = Cli::try_parse_from(["niri-tools", "mode", "toggle", "brightness"]).unwrap();
+        assert_eq!(
+            cli.command,
+            Commands::Mode {
+                command: ModeCommand::Toggle {
+                    name: Some("brightness".to_string())
+                }
+            }
+        );
+    }
+
+    #[test]
+    fn parse_scratchpad_pick() {
+        let cli = Cli::try_parse_from(["niri-tools", "scratchpad", "pick"]).unwrap();
+        assert_eq!(
+            cli.command,
+            Commands::Scratchpad {
+                command: ScratchpadCommand::Pick
+            }
+        );
+    }
+
+    // ── Mode command construction tests ─────────────────────────────────
+
+    #[test]
+    fn build_command_mode_show() {
+        let cli = Cli::try_parse_from(["niri-tools", "mode", "show", "root"]).unwrap();
+        assert_eq!(
+            build_command(&cli),
+            Some(Command::ModeShow {
+                mode: Some("root".to_string())
+            })
+        );
+    }
+
+    #[test]
+    fn build_command_mode_hide() {
+        let cli = Cli::try_parse_from(["niri-tools", "mode", "hide"]).unwrap();
+        assert_eq!(build_command(&cli), Some(Command::ModeHide));
+    }
+
+    #[test]
+    fn build_command_mode_toggle() {
+        let cli = Cli::try_parse_from(["niri-tools", "mode", "toggle", "brightness"]).unwrap();
+        assert_eq!(
+            build_command(&cli),
+            Some(Command::ModeToggle {
+                mode: Some("brightness".to_string())
+            })
+        );
+    }
+
+    #[test]
+    fn build_command_scratchpad_pick() {
+        let cli = Cli::try_parse_from(["niri-tools", "scratchpad", "pick"]).unwrap();
+        assert_eq!(build_command(&cli), Some(Command::ScratchpadPick));
     }
 
     #[test]
