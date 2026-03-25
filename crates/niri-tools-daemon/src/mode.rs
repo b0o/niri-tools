@@ -258,4 +258,109 @@ mod tests {
         // Stack still has "root" on it, and new mode definition is used
         assert_eq!(state.current_mode().unwrap().binds.len(), 1);
     }
+
+    #[test]
+    fn lookup_bind_with_no_modes_loaded() {
+        let state = ModeState::new(HashMap::new());
+        // No modes at all — lookup should return None
+        assert!(state.lookup_bind("Space").is_none());
+        assert!(state.lookup_bind("a").is_none());
+        assert!(state.lookup_bind("").is_none());
+    }
+
+    #[test]
+    fn deep_mode_stack_push_pop_order() {
+        // Create 4 modes: a → b → c → d
+        let mut modes = HashMap::new();
+        for name in ["a", "b", "c", "d"] {
+            modes.insert(
+                name.to_string(),
+                ModeConfig {
+                    name: name.to_string(),
+                    keep_open: false,
+                    binds: vec![BindConfig {
+                        key: name.to_string(),
+                        description: format!("Mode {name}"),
+                        options: vec![],
+                        action: BindAction::SpawnSh(format!("echo {name}")),
+                    }],
+                },
+            );
+        }
+
+        let mut state = ModeState::new(modes);
+
+        // Push 4 deep
+        assert!(state.push_mode("a"));
+        assert!(state.push_mode("b"));
+        assert!(state.push_mode("c"));
+        assert!(state.push_mode("d"));
+        assert_eq!(state.depth(), 4);
+
+        // Current is "d" (last pushed)
+        assert_eq!(state.current_mode().unwrap().name, "d");
+
+        // Pop verifies LIFO order
+        assert!(state.pop_mode());
+        assert_eq!(state.current_mode().unwrap().name, "c");
+        assert_eq!(state.depth(), 3);
+
+        assert!(state.pop_mode());
+        assert_eq!(state.current_mode().unwrap().name, "b");
+        assert_eq!(state.depth(), 2);
+
+        assert!(state.pop_mode());
+        assert_eq!(state.current_mode().unwrap().name, "a");
+        assert_eq!(state.depth(), 1);
+
+        assert!(state.pop_mode());
+        assert!(state.current_mode().is_none());
+        assert_eq!(state.depth(), 0);
+
+        // Extra pop on empty stack
+        assert!(!state.pop_mode());
+    }
+
+    #[test]
+    fn update_modes_clears_stale_mode_references() {
+        let mut state = ModeState::new(make_modes());
+
+        // Push both modes onto the stack
+        state.push_mode("root");
+        state.push_mode("brightness");
+        assert_eq!(state.depth(), 2);
+        assert_eq!(state.current_mode().unwrap().name, "brightness");
+
+        // Update modes to only contain "root" — "brightness" is now stale
+        let mut new_modes = HashMap::new();
+        new_modes.insert(
+            "root".to_string(),
+            ModeConfig {
+                name: "root".to_string(),
+                keep_open: false,
+                binds: vec![BindConfig {
+                    key: "x".to_string(),
+                    description: "New bind".to_string(),
+                    options: vec![],
+                    action: BindAction::SpawnSh("echo x".to_string()),
+                }],
+            },
+        );
+        state.update_modes(new_modes);
+
+        // Stack still has "brightness" on top, but the mode definition is gone
+        // current_mode() returns None because the mode name doesn't resolve
+        assert_eq!(state.depth(), 2); // stack unchanged
+        assert!(state.current_mode().is_none()); // stale reference
+
+        // Pop the stale "brightness" reference
+        assert!(state.pop_mode());
+        // Now "root" is on top and it still exists
+        assert_eq!(state.current_mode().unwrap().name, "root");
+        assert_eq!(state.current_mode().unwrap().binds.len(), 1);
+
+        // Lookup works on the new "root" definition
+        assert!(state.lookup_bind("x").is_some());
+        assert!(state.lookup_bind("Space").is_none()); // old bind gone
+    }
 }

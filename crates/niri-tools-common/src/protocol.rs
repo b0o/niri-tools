@@ -321,4 +321,21 @@ mod tests {
         let result: std::result::Result<Command, _> = read_message(&mut cursor);
         assert!(result.is_err());
     }
+
+    #[test]
+    fn mode_toggle_none_roundtrip() {
+        // Explicit test for the ModeToggle { mode: None } edge case.
+        // This variant has no inner data, which can trip up some serializers.
+        let cmd = Command::ModeToggle { mode: None };
+        let encoded = encode_message(&cmd).unwrap();
+        let decoded: Command = decode_message(&encoded).unwrap();
+        assert_eq!(cmd, decoded);
+
+        // Also verify via write/read path
+        let mut buf = Vec::new();
+        write_message(&mut buf, &cmd).unwrap();
+        let mut cursor = Cursor::new(&buf);
+        let decoded2: Command = read_message(&mut cursor).unwrap();
+        assert_eq!(cmd, decoded2);
+    }
 }

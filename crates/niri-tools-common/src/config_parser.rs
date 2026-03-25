@@ -1386,6 +1386,141 @@ scratchpad "browser" {
         );
     }
 
+    // ── Mode edge cases ─────────────────────────────────────────
+
+    #[test]
+    fn parse_mode_empty_no_binds_block() {
+        let cfg = load_from_str(
+            r#"
+mode "empty" {
+    keep-open
+}
+"#,
+        )
+        .unwrap();
+        let mode = &cfg.modes["empty"];
+        assert!(mode.keep_open);
+        assert!(mode.binds.is_empty());
+        // Should warn about missing binds block
+        assert!(cfg
+            .warnings
+            .iter()
+            .any(|w| w.contains("empty") && w.contains("no binds")));
+    }
+
+    #[test]
+    fn parse_mode_with_empty_binds_block() {
+        let cfg = load_from_str(
+            r#"
+mode "hollow" {
+    binds {
+    }
+}
+"#,
+        )
+        .unwrap();
+        let mode = &cfg.modes["hollow"];
+        assert!(!mode.keep_open);
+        assert!(mode.binds.is_empty());
+        // Empty binds block is valid — no warnings about binds
+        assert!(
+            !cfg.warnings.iter().any(|w| w.contains("hollow")),
+            "unexpected warnings: {:?}",
+            cfg.warnings
+        );
+    }
+
+    #[test]
+    fn parse_unknown_action_treated_as_niri_passthrough() {
+        let cfg = load_from_str(
+            r#"
+mode "test" {
+    binds {
+        f "Fullscreen" { fullscreen-window; }
+        c "Center" { center-column; }
+        w "Width" { set-column-width "50%"; }
+    }
+}
+"#,
+        )
+        .unwrap();
+        let mode = &cfg.modes["test"];
+        assert_eq!(mode.binds.len(), 3);
+
+        // fullscreen-window → NiriAction with no args
+        assert!(matches!(
+            &mode.binds[0].action,
+            BindAction::NiriAction { name, args }
+            if name == "fullscreen-window" && args.is_empty()
+        ));
+
+        // center-column → NiriAction with no args
+        assert!(matches!(
+            &mode.binds[1].action,
+            BindAction::NiriAction { name, args }
+            if name == "center-column" && args.is_empty()
+        ));
+
+        // set-column-width → NiriAction with args
+        assert!(matches!(
+            &mode.binds[2].action,
+            BindAction::NiriAction { name, args }
+            if name == "set-column-width" && args == &["50%"]
+        ));
+    }
+
+    #[test]
+    fn parse_scratchpad_actions_in_binds() {
+        let cfg = load_from_str(
+            r#"
+mode "scratchpads" {
+    binds {
+        t "Toggle term" { scratchpad-toggle "term"; }
+        T "Toggle any" { scratchpad-toggle; }
+        h "Hide" { scratchpad-hide; }
+        f "Float term" { scratchpad-float "term"; }
+        F "Tile term" { scratchpad-tile "term"; }
+        g "Toggle float" { scratchpad-toggle-float; }
+        p "Pick" { scratchpad-pick; }
+        a "Adopt" { scratchpad-adopt; }
+        d "Disown" { scratchpad-disown; }
+    }
+}
+"#,
+        )
+        .unwrap();
+        let mode = &cfg.modes["scratchpads"];
+        assert_eq!(mode.binds.len(), 9);
+
+        assert!(matches!(
+            &mode.binds[0].action,
+            BindAction::ScratchpadToggle(Some(name)) if name == "term"
+        ));
+        assert!(matches!(
+            &mode.binds[1].action,
+            BindAction::ScratchpadToggle(None)
+        ));
+        assert!(matches!(&mode.binds[2].action, BindAction::ScratchpadHide));
+        assert!(matches!(
+            &mode.binds[3].action,
+            BindAction::ScratchpadFloat(Some(name)) if name == "term"
+        ));
+        assert!(matches!(
+            &mode.binds[4].action,
+            BindAction::ScratchpadTile(Some(name)) if name == "term"
+        ));
+        assert!(matches!(
+            &mode.binds[5].action,
+            BindAction::ScratchpadToggleFloat
+        ));
+        assert!(matches!(&mode.binds[6].action, BindAction::ScratchpadPick));
+        assert!(matches!(&mode.binds[7].action, BindAction::ScratchpadAdopt));
+        assert!(matches!(
+            &mode.binds[8].action,
+            BindAction::ScratchpadDisown
+        ));
+    }
+
     // ── paths::default_config_path ────────────────────────────────
 
     /// Combined into a single test to avoid env-var race conditions
