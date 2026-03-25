@@ -42,18 +42,27 @@ fn main() {
         // Leak the guard so the hold persists for the process lifetime.
         std::mem::forget(app.hold());
 
+        // Create a channel for tokio→GTK UI command forwarding.
+        let (ui_tx, mut ui_rx) = tokio::sync::mpsc::channel::<ui::UiCommand>(64);
+
         // Create the UI manager (owns GTK windows, starts hidden).
-        let _ui_manager = ui::UiManager::new(app);
+        let ui_manager = ui::UiManager::new(app);
+
+        // Bridge: receive UI commands from tokio and dispatch on the GTK thread.
+        glib::spawn_future_local(async move {
+            while let Some(cmd) = ui_rx.recv().await {
+                ui_manager.handle_command(cmd);
+            }
+        });
 
         // Spawn the daemon's tokio event loop on the background runtime.
-        // UI commands will be forwarded to the GTK thread via glib channels (Phase 2.2+).
         runtime().spawn(async move {
             let niri_client: Box<dyn niri_tools_common::traits::NiriClient> =
                 Box::new(RealNiriClient);
             let notifier: Box<dyn niri_tools_common::traits::Notifier> =
                 Box::new(RealNotifier::new(NotifyLevel::All));
 
-            let mut server = server::DaemonServer::new(niri_client, notifier);
+            let mut server = server::DaemonServer::new(niri_client, notifier, ui_tx);
             if let Err(e) = server.start().await {
                 tracing::error!(%e, "daemon server error");
             }

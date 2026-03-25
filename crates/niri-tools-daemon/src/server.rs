@@ -9,6 +9,7 @@ use niri_tools_common::traits::{NiriClient, Notifier};
 use crate::events::{apply_event, EventAction};
 use crate::scratchpad::ScratchpadManager;
 use crate::state::DaemonState;
+use crate::ui::UiCommand;
 
 /// Maximum message size for client communication (16 MiB).
 const MAX_MESSAGE_SIZE: u32 = 16 * 1024 * 1024;
@@ -17,15 +18,36 @@ pub struct DaemonServer {
     state: DaemonState,
     niri: Box<dyn NiriClient>,
     notifier: Box<dyn Notifier>,
+    ui_tx: Option<tokio::sync::mpsc::Sender<UiCommand>>,
     running: bool,
 }
 
 impl DaemonServer {
-    pub fn new(niri: Box<dyn NiriClient>, notifier: Box<dyn Notifier>) -> Self {
+    pub fn new(
+        niri: Box<dyn NiriClient>,
+        notifier: Box<dyn Notifier>,
+        ui_tx: tokio::sync::mpsc::Sender<UiCommand>,
+    ) -> Self {
         Self {
             state: DaemonState::default(),
             niri,
             notifier,
+            ui_tx: Some(ui_tx),
+            running: false,
+        }
+    }
+
+    /// Create a server without a UI channel (for tests that don't need GTK).
+    #[cfg(test)]
+    pub fn new_without_ui(
+        niri: Box<dyn NiriClient>,
+        notifier: Box<dyn Notifier>,
+    ) -> Self {
+        Self {
+            state: DaemonState::default(),
+            niri,
+            notifier,
+            ui_tx: None,
             running: false,
         }
     }
@@ -294,19 +316,19 @@ impl DaemonServer {
             }
 
             Command::ModeShow { mode } => {
-                tracing::info!(?mode, "mode show (not yet implemented)");
+                self.send_ui_command(UiCommand::ModeShow { mode });
                 Response::Ok
             }
             Command::ModeHide => {
-                tracing::info!("mode hide (not yet implemented)");
+                self.send_ui_command(UiCommand::ModeHide);
                 Response::Ok
             }
             Command::ModeToggle { mode } => {
-                tracing::info!(?mode, "mode toggle (not yet implemented)");
+                self.send_ui_command(UiCommand::ModeToggle { mode });
                 Response::Ok
             }
             Command::ScratchpadPick => {
-                tracing::info!("scratchpad pick (not yet implemented)");
+                self.send_ui_command(UiCommand::ScratchpadPick);
                 Response::Ok
             }
         }
@@ -390,6 +412,15 @@ impl DaemonServer {
 
         if is_reload {
             self.notifier.notify_info("Config", "Configuration reloaded");
+        }
+    }
+
+    /// Forward a UI command to the GTK thread. No-op if no UI channel is available.
+    fn send_ui_command(&self, cmd: UiCommand) {
+        if let Some(ref tx) = self.ui_tx {
+            if let Err(e) = tx.try_send(cmd) {
+                tracing::warn!(%e, "failed to send UI command");
+            }
         }
     }
 
@@ -568,7 +599,7 @@ mod tests {
     }
 
     fn make_server() -> DaemonServer {
-        DaemonServer::new(
+        DaemonServer::new_without_ui(
             Box::new(MockNiriClient::new()),
             Box::new(MockNotifier::default()),
         )

@@ -18,7 +18,7 @@ niri-tools-common = { path = "../niri-tools-common" }
 regex = "1"
 serde.workspace = true
 serde_json.workspace = true
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "process", "fs", "signal", "io-util", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "process", "fs", "signal", "io-util", "time", "sync"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
