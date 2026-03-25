@@ -380,6 +380,10 @@ impl DaemonServer {
         // Update scratchpad configs
         self.state.scratchpad_configs = loaded.scratchpads;
 
+        // Update mode and UI configs
+        self.state.mode_configs = loaded.modes;
+        self.state.ui_config = loaded.ui_config;
+
         // Update config file list and watch setting
         self.state.config_files = loaded.config_files.into_iter().collect();
         self.state.watch_config = loaded.settings.watch_config;

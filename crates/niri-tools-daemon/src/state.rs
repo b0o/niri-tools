@@ -5,7 +5,7 @@ use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
 
-use niri_tools_common::config::ScratchpadConfig;
+use niri_tools_common::config::{ModeConfig, ScratchpadConfig, UiConfig};
 use niri_tools_common::paths::state_file_path;
 use niri_tools_common::types::{OutputInfo, WindowInfo, WorkspaceInfo};
 
@@ -35,6 +35,8 @@ pub struct DaemonState {
 
     // Config
     pub scratchpad_configs: HashMap<String, ScratchpadConfig>,
+    pub mode_configs: HashMap<String, ModeConfig>,
+    pub ui_config: UiConfig,
     pub config_files: HashSet<PathBuf>,
     pub watch_config: bool,
 }
