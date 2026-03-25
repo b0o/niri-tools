@@ -5,7 +5,8 @@ use kdl::KdlDocument;
 use kdl::KdlNode;
 
 use crate::config::{
-    DaemonSettings, NotifyLevel, OutputOverride, PositionConfig, ScratchpadConfig, SizeConfig,
+    BindAction, BindConfig, BindOption, DaemonSettings, ModeConfig, ModesUiConfig, NotifyLevel,
+    OutputOverride, PositionConfig, ScratchpadConfig, ScratchpadsUiConfig, SizeConfig, UiConfig,
 };
 use crate::error::NiriToolsError;
 
@@ -14,6 +15,8 @@ use crate::error::NiriToolsError;
 pub struct LoadedConfig {
     pub settings: DaemonSettings,
     pub scratchpads: HashMap<String, ScratchpadConfig>,
+    pub modes: HashMap<String, ModeConfig>,
+    pub ui_config: UiConfig,
     pub config_files: Vec<PathBuf>,
     pub warnings: Vec<String>,
 }
@@ -97,7 +100,10 @@ fn parse_document(
         match name {
             "include" => process_include(node, parent_dir, visited, config),
             "settings" => parse_settings(node, config),
+            "notifications" => parse_notifications(node, config),
             "scratchpad" => parse_scratchpad(node, config),
+            "mode" => parse_mode(node, config),
+            "ui" => parse_ui(node, config),
             _ => {
                 // Unknown top-level nodes are silently ignored
             }
@@ -220,6 +226,18 @@ fn parse_scratchpad(node: &KdlNode, config: &mut LoadedConfig) {
         })
         .unwrap_or(false);
 
+    // key (optional) - shortcut key in picker
+    let key = children
+        .get_arg("key")
+        .and_then(|v| v.as_string())
+        .map(String::from);
+
+    // desc (optional) - display name in picker
+    let desc = children
+        .get_arg("desc")
+        .and_then(|v| v.as_string())
+        .map(String::from);
+
     // command: all positional arguments of the `command` node
     let command = children.get("command").map(|cmd_node| {
         cmd_node
@@ -253,8 +271,8 @@ fn parse_scratchpad(node: &KdlNode, config: &mut LoadedConfig) {
         app_id,
         title,
         auto_adopt,
-        key: None,
-        desc: None,
+        key,
+        desc,
         size,
         position,
         output_overrides,
@@ -299,6 +317,301 @@ fn parse_output_override(node: &KdlNode) -> OutputOverride {
     OutputOverride {
         size: parse_size_from_doc(children),
         position: parse_position_from_doc(children),
+    }
+}
+
+/// Parse a top-level `notifications` node.
+///
+/// The `notifications` node takes a single string argument: the notify level.
+/// This takes precedence over `settings { notify "..." }` if both are present.
+fn parse_notifications(node: &KdlNode, config: &mut LoadedConfig) {
+    if let Some(level_str) = node.get(0).and_then(|e| e.value().as_string()) {
+        config.settings.notify_level = match level_str {
+            "none" => NotifyLevel::None,
+            "error" => NotifyLevel::Error,
+            "warning" => NotifyLevel::Warning,
+            "all" => NotifyLevel::All,
+            other => {
+                config
+                    .warnings
+                    .push(format!("Unknown notification level: {other}"));
+                NotifyLevel::All
+            }
+        };
+    }
+}
+
+/// Parse a top-level `mode` node into a `ModeConfig`.
+fn parse_mode(node: &KdlNode, config: &mut LoadedConfig) {
+    let Some(name) = node.get(0).and_then(|e| e.value().as_string()) else {
+        config
+            .warnings
+            .push("Mode node missing name argument".to_string());
+        return;
+    };
+    let name = name.to_string();
+
+    let Some(children) = node.children() else {
+        config.warnings.push(format!("Mode \"{name}\" has no body"));
+        return;
+    };
+
+    // Check for keep-open flag
+    let keep_open = children.get("keep-open").is_some();
+
+    // Parse binds block
+    let binds = if let Some(binds_node) = children.get("binds") {
+        parse_binds(binds_node, config)
+    } else {
+        config
+            .warnings
+            .push(format!("Mode \"{name}\" has no binds block"));
+        Vec::new()
+    };
+
+    let mode = ModeConfig {
+        name: name.clone(),
+        keep_open,
+        binds,
+    };
+    config.modes.insert(name, mode);
+}
+
+/// Parse a `binds` block inside a mode into a `Vec<BindConfig>`.
+fn parse_binds(node: &KdlNode, config: &mut LoadedConfig) -> Vec<BindConfig> {
+    let Some(children) = node.children() else {
+        return Vec::new();
+    };
+
+    let mut binds = Vec::new();
+    for bind_node in children.nodes() {
+        let key = bind_node.name().value().to_string();
+
+        // Description is the first positional argument
+        let description = bind_node
+            .get(0)
+            .and_then(|e| e.value().as_string())
+            .unwrap_or("")
+            .to_string();
+
+        let (options, action) = parse_bind_children(bind_node, config);
+
+        if let Some(action) = action {
+            binds.push(BindConfig {
+                key,
+                description,
+                options,
+                action,
+            });
+        }
+    }
+    binds
+}
+
+/// Parse the children of a bind node into options and an action.
+fn parse_bind_children(
+    node: &KdlNode,
+    _config: &mut LoadedConfig,
+) -> (Vec<BindOption>, Option<BindAction>) {
+    let Some(children) = node.children() else {
+        return (Vec::new(), None);
+    };
+
+    let mut options = Vec::new();
+    let mut action = None;
+
+    for child in children.nodes() {
+        let name = child.name().value();
+        match name {
+            "keep-open" => options.push(BindOption::KeepOpen),
+            "close" => options.push(BindOption::Close),
+            "alias" => {
+                if let Some(alias_str) = child.get(0).and_then(|e| e.value().as_string()) {
+                    options.push(BindOption::Alias(alias_str.to_string()));
+                }
+            }
+            "spawn-sh" => {
+                if let Some(cmd) = child.get(0).and_then(|e| e.value().as_string()) {
+                    action = Some(BindAction::SpawnSh(cmd.to_string()));
+                }
+            }
+            "spawn" => {
+                let args: Vec<String> = child
+                    .entries()
+                    .iter()
+                    .filter(|e| e.name().is_none())
+                    .filter_map(|e| e.value().as_string().map(String::from))
+                    .collect();
+                action = Some(BindAction::Spawn(args));
+            }
+            "switch-mode" => {
+                if let Some(mode_name) = child.get(0).and_then(|e| e.value().as_string()) {
+                    action = Some(BindAction::SwitchMode(mode_name.to_string()));
+                }
+            }
+            "scratchpad-pick" => action = Some(BindAction::ScratchpadPick),
+            "scratchpad-toggle" => {
+                let name = child
+                    .get(0)
+                    .and_then(|e| e.value().as_string().map(String::from));
+                action = Some(BindAction::ScratchpadToggle(name));
+            }
+            "scratchpad-hide" => action = Some(BindAction::ScratchpadHide),
+            "scratchpad-float" => {
+                let name = child
+                    .get(0)
+                    .and_then(|e| e.value().as_string().map(String::from));
+                action = Some(BindAction::ScratchpadFloat(name));
+            }
+            "scratchpad-tile" => {
+                let name = child
+                    .get(0)
+                    .and_then(|e| e.value().as_string().map(String::from));
+                action = Some(BindAction::ScratchpadTile(name));
+            }
+            "scratchpad-toggle-float" => action = Some(BindAction::ScratchpadToggleFloat),
+            "scratchpad-adopt" => action = Some(BindAction::ScratchpadAdopt),
+            "scratchpad-disown" => action = Some(BindAction::ScratchpadDisown),
+            // Unknown action names are treated as niri action pass-through
+            other => {
+                let args: Vec<String> = child
+                    .entries()
+                    .iter()
+                    .filter(|e| e.name().is_none())
+                    .filter_map(|e| e.value().as_string().map(String::from))
+                    .collect();
+                action = Some(BindAction::NiriAction {
+                    name: other.to_string(),
+                    args,
+                });
+            }
+        }
+    }
+    (options, action)
+}
+
+/// Parse a top-level `ui` node into `UiConfig`.
+fn parse_ui(node: &KdlNode, config: &mut LoadedConfig) {
+    let Some(children) = node.children() else {
+        return;
+    };
+
+    // Global UI properties
+    config.ui_config.font = children
+        .get_arg("font")
+        .and_then(|v| v.as_string())
+        .map(String::from);
+    config.ui_config.background_color = children
+        .get_arg("background-color")
+        .and_then(|v| v.as_string())
+        .map(String::from);
+    config.ui_config.color = children
+        .get_arg("color")
+        .and_then(|v| v.as_string())
+        .map(String::from);
+    config.ui_config.corner_radius = children
+        .get_arg("corner-radius")
+        .and_then(|v| v.as_i64().map(|i| i as f64).or_else(|| v.as_f64()));
+
+    // Sub-blocks
+    if let Some(modes_node) = children.get("modes") {
+        config.ui_config.modes = parse_modes_ui(modes_node);
+    }
+    if let Some(sp_node) = children.get("scratchpads") {
+        config.ui_config.scratchpads = parse_scratchpads_ui(sp_node);
+    }
+}
+
+/// Parse a `modes` sub-block inside `ui`.
+fn parse_modes_ui(node: &KdlNode) -> ModesUiConfig {
+    let Some(children) = node.children() else {
+        return ModesUiConfig::default();
+    };
+
+    ModesUiConfig {
+        font: children
+            .get_arg("font")
+            .and_then(|v| v.as_string())
+            .map(String::from),
+        background_color: children
+            .get_arg("background-color")
+            .and_then(|v| v.as_string())
+            .map(String::from),
+        color: children
+            .get_arg("color")
+            .and_then(|v| v.as_string())
+            .map(String::from),
+        corner_radius: children
+            .get_arg("corner-radius")
+            .and_then(|v| v.as_i64().map(|i| i as f64).or_else(|| v.as_f64())),
+        anchor: children
+            .get_arg("anchor")
+            .and_then(|v| v.as_string())
+            .map(String::from),
+        separator: children
+            .get_arg("separator")
+            .and_then(|v| v.as_string())
+            .map(String::from),
+        margin_top: children
+            .get_arg("margin-top")
+            .and_then(|v| v.as_i64())
+            .map(|i| i as i32),
+        margin_right: children
+            .get_arg("margin-right")
+            .and_then(|v| v.as_i64())
+            .map(|i| i as i32),
+        margin_bottom: children
+            .get_arg("margin-bottom")
+            .and_then(|v| v.as_i64())
+            .map(|i| i as i32),
+        margin_left: children
+            .get_arg("margin-left")
+            .and_then(|v| v.as_i64())
+            .map(|i| i as i32),
+        padding: children
+            .get_arg("padding")
+            .and_then(|v| v.as_i64().map(|i| i as f64).or_else(|| v.as_f64())),
+        column_padding: children
+            .get_arg("column-padding")
+            .and_then(|v| v.as_i64().map(|i| i as f64).or_else(|| v.as_f64())),
+        min_width: children
+            .get_arg("min-width")
+            .and_then(|v| v.as_i64().map(|i| i as f64).or_else(|| v.as_f64())),
+        border_width: children
+            .get_arg("border-width")
+            .and_then(|v| v.as_i64().map(|i| i as f64).or_else(|| v.as_f64())),
+    }
+}
+
+/// Parse a `scratchpads` sub-block inside `ui`.
+fn parse_scratchpads_ui(node: &KdlNode) -> ScratchpadsUiConfig {
+    let Some(children) = node.children() else {
+        return ScratchpadsUiConfig::default();
+    };
+
+    ScratchpadsUiConfig {
+        font: children
+            .get_arg("font")
+            .and_then(|v| v.as_string())
+            .map(String::from),
+        background_color: children
+            .get_arg("background-color")
+            .and_then(|v| v.as_string())
+            .map(String::from),
+        color: children
+            .get_arg("color")
+            .and_then(|v| v.as_string())
+            .map(String::from),
+        corner_radius: children
+            .get_arg("corner-radius")
+            .and_then(|v| v.as_i64().map(|i| i as f64).or_else(|| v.as_f64())),
+        anchor: children
+            .get_arg("anchor")
+            .and_then(|v| v.as_string())
+            .map(String::from),
+        padding: children
+            .get_arg("padding")
+            .and_then(|v| v.as_i64().map(|i| i as f64).or_else(|| v.as_f64())),
     }
 }
 
@@ -663,6 +976,200 @@ scratchpad "dms-settings" {
         assert!(!cfg.scratchpads.get("term").unwrap().auto_adopt);
         assert!(!cfg.scratchpads.get("dms-settings").unwrap().auto_adopt);
         assert!(cfg.warnings.is_empty());
+    }
+
+    // ── key/desc on scratchpads ──────────────────────────────────
+
+    #[test]
+    fn parse_scratchpad_with_key_and_desc() {
+        let cfg = load_from_str(
+            r#"
+scratchpad "term" {
+    key "t"
+    desc "Terminal"
+    app-id "com.mitchellh.ghostty"
+    command "ghostty"
+}
+"#,
+        )
+        .unwrap();
+        let sp = &cfg.scratchpads["term"];
+        assert_eq!(sp.key.as_deref(), Some("t"));
+        assert_eq!(sp.desc.as_deref(), Some("Terminal"));
+    }
+
+    // ── notifications top-level node ──────────────────────────────
+
+    #[test]
+    fn parse_notifications_warning() {
+        let cfg = load_from_str(r#"notifications "warning""#).unwrap();
+        assert_eq!(cfg.settings.notify_level, NotifyLevel::Warning);
+    }
+
+    #[test]
+    fn parse_notifications_none() {
+        let cfg = load_from_str(r#"notifications "none""#).unwrap();
+        assert_eq!(cfg.settings.notify_level, NotifyLevel::None);
+    }
+
+    #[test]
+    fn parse_notifications_overrides_settings() {
+        let cfg = load_from_str(
+            r#"
+settings { notify "all"; }
+notifications "error"
+"#,
+        )
+        .unwrap();
+        assert_eq!(cfg.settings.notify_level, NotifyLevel::Error);
+    }
+
+    #[test]
+    fn parse_notifications_unknown_level_warns() {
+        let cfg = load_from_str(r#"notifications "banana""#).unwrap();
+        assert_eq!(cfg.settings.notify_level, NotifyLevel::All);
+        assert!(cfg.warnings.iter().any(|w| w.contains("banana")));
+    }
+
+    // ── UI config parsing ─────────────────────────────────────────
+
+    #[test]
+    fn parse_ui_config() {
+        let cfg = load_from_str(
+            r##"
+ui {
+    font "Mono 12"
+    background-color "#282828"
+    color "#fbf1c7"
+    corner-radius 4
+    modes {
+        anchor "bottom"
+        separator "  "
+        margin-bottom -33
+        padding 4
+        column-padding 50
+        min-width 1000
+    }
+    scratchpads {
+        anchor "center"
+        padding 12
+    }
+}
+"##,
+        )
+        .unwrap();
+        assert_eq!(cfg.ui_config.font.as_deref(), Some("Mono 12"));
+        assert_eq!(cfg.ui_config.background_color.as_deref(), Some("#282828"));
+        assert_eq!(cfg.ui_config.color.as_deref(), Some("#fbf1c7"));
+        assert_eq!(cfg.ui_config.corner_radius, Some(4.0));
+        assert_eq!(cfg.ui_config.modes.anchor.as_deref(), Some("bottom"));
+        assert_eq!(cfg.ui_config.modes.separator.as_deref(), Some("  "));
+        assert_eq!(cfg.ui_config.modes.margin_bottom, Some(-33));
+        assert_eq!(cfg.ui_config.modes.padding, Some(4.0));
+        assert_eq!(cfg.ui_config.modes.column_padding, Some(50.0));
+        assert_eq!(cfg.ui_config.modes.min_width, Some(1000.0));
+        assert_eq!(cfg.ui_config.scratchpads.anchor.as_deref(), Some("center"));
+        assert_eq!(cfg.ui_config.scratchpads.padding, Some(12.0));
+    }
+
+    // ── Mode config parsing ───────────────────────────────────────
+
+    #[test]
+    fn parse_mode_config() {
+        let cfg = load_from_str(
+            r#"
+mode "root" {
+    binds {
+        Space "Launcher" { spawn-sh "rofi -show drun"; }
+        o "Open" { switch-mode "open"; }
+        b "Brightness" { switch-mode "brightness"; }
+    }
+}
+mode "brightness" {
+    keep-open
+    binds {
+        j "-5" { keep-open; spawn-sh "brightness -5"; }
+        k "+5" { spawn-sh "brightness +5"; }
+        "?" "Query" { alias "q"; spawn-sh "brightness -q"; }
+    }
+}
+"#,
+        )
+        .unwrap();
+
+        // Root mode
+        let root = &cfg.modes["root"];
+        assert_eq!(root.binds.len(), 3);
+        assert_eq!(root.binds[0].key, "Space");
+        assert_eq!(root.binds[0].description, "Launcher");
+        assert!(matches!(
+            root.binds[0].action,
+            BindAction::SpawnSh(ref s) if s == "rofi -show drun"
+        ));
+        assert!(matches!(
+            root.binds[1].action,
+            BindAction::SwitchMode(ref s) if s == "open"
+        ));
+        assert!(!root.keep_open);
+
+        // Brightness mode
+        let bright = &cfg.modes["brightness"];
+        assert!(bright.keep_open);
+        assert_eq!(bright.binds.len(), 3);
+        assert_eq!(bright.binds[0].key, "j");
+        assert!(bright.binds[0].options.contains(&BindOption::KeepOpen));
+        assert_eq!(bright.binds[2].key, "?");
+        assert!(bright.binds[2]
+            .options
+            .iter()
+            .any(|o| matches!(o, BindOption::Alias(s) if s == "q")));
+    }
+
+    #[test]
+    fn parse_niri_action_passthrough() {
+        let cfg = load_from_str(
+            r#"
+mode "resize" {
+    binds {
+        "5" "50%" { set-window-width "50%"; }
+        e "Expand" { expand-column-to-available-width; }
+    }
+}
+"#,
+        )
+        .unwrap();
+        let resize = &cfg.modes["resize"];
+        assert!(matches!(
+            &resize.binds[0].action,
+            BindAction::NiriAction { name, args }
+            if name == "set-window-width" && args == &["50%"]
+        ));
+        assert!(matches!(
+            &resize.binds[1].action,
+            BindAction::NiriAction { name, args }
+            if name == "expand-column-to-available-width" && args.is_empty()
+        ));
+    }
+
+    #[test]
+    fn parse_duplicate_mode_name_overrides() {
+        let cfg = load_from_str(
+            r#"
+mode "root" {
+    binds {
+        a "A" { spawn-sh "echo a"; }
+    }
+}
+mode "root" {
+    binds {
+        b "B" { spawn-sh "echo b"; }
+    }
+}
+"#,
+        )
+        .unwrap();
+        // Second definition overrides first
+        assert_eq!(cfg.modes["root"].binds[0].key, "b");
     }
 
     // ── match field parsing ─────────────────────────────────────
