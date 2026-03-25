@@ -253,6 +253,8 @@ fn parse_scratchpad(node: &KdlNode, config: &mut LoadedConfig) {
         app_id,
         title,
         auto_adopt,
+        key: None,
+        desc: None,
         size,
         position,
         output_overrides,

@@ -7,6 +7,8 @@ pub struct ScratchpadConfig {
     pub app_id: Option<String>,
     pub title: Option<String>,
     pub auto_adopt: bool,
+    pub key: Option<String>,
+    pub desc: Option<String>,
     pub size: Option<SizeConfig>,
     pub position: Option<PositionConfig>,
     pub output_overrides: HashMap<String, OutputOverride>,
@@ -30,39 +32,9 @@ pub struct OutputOverride {
     pub position: Option<PositionConfig>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum NotifyLevel {
-    None = 0,
-    Error = 1,
-    Warning = 2,
-    All = 3,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct DaemonSettings {
-    pub notify_level: NotifyLevel,
-    pub watch_config: bool,
-}
-
-impl Default for DaemonSettings {
-    fn default() -> Self {
-        Self {
-            notify_level: NotifyLevel::All,
-            watch_config: true,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn daemon_settings_default_values() {
-        let settings = DaemonSettings::default();
-        assert_eq!(settings.notify_level, NotifyLevel::All);
-        assert!(settings.watch_config);
-    }
 
     #[test]
     fn size_config_construction_and_equality() {
@@ -105,6 +77,8 @@ mod tests {
             app_id: Some("foot".to_string()),
             title: None,
             auto_adopt: false,
+            key: None,
+            desc: None,
             size: Some(SizeConfig {
                 width: "60%".to_string(),
                 height: "60%".to_string(),
@@ -119,6 +93,8 @@ mod tests {
         assert!(config.command.is_some());
         assert_eq!(config.app_id.as_deref(), Some("foot"));
         assert!(config.title.is_none());
+        assert!(config.key.is_none());
+        assert!(config.desc.is_none());
         assert!(config.size.is_some());
         assert!(config.position.is_some());
         assert!(config.output_overrides.is_empty());
@@ -144,6 +120,8 @@ mod tests {
             app_id: Some("firefox".to_string()),
             title: None,
             auto_adopt: false,
+            key: None,
+            desc: None,
             size: None,
             position: None,
             output_overrides: overrides,
@@ -153,14 +131,5 @@ mod tests {
         let edp = &config.output_overrides["eDP-1"];
         assert!(edp.size.is_some());
         assert!(edp.position.is_none());
-    }
-
-    #[test]
-    fn notify_level_variants() {
-        // Ensure all variants are distinct
-        assert_ne!(NotifyLevel::None, NotifyLevel::Error);
-        assert_ne!(NotifyLevel::Error, NotifyLevel::Warning);
-        assert_ne!(NotifyLevel::Warning, NotifyLevel::All);
-        assert_ne!(NotifyLevel::None, NotifyLevel::All);
     }
 }
