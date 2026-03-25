@@ -14,6 +14,7 @@ use tokio::runtime::Runtime;
 
 use niri::RealNiriClient;
 use niri_tools_common::config::NotifyLevel;
+use niri_tools_common::config_parser::load_config;
 use notify::RealNotifier;
 
 /// Global tokio runtime, accessed from any thread.
@@ -45,8 +46,13 @@ fn main() {
         // Create a channel for tokio→GTK UI command forwarding.
         let (ui_tx, mut ui_rx) = tokio::sync::mpsc::channel::<ui::UiCommand>(64);
 
+        // Load config for initial UI setup.
+        let ui_config = load_config(None)
+            .map(|c| c.ui_config)
+            .unwrap_or_default();
+
         // Create the UI manager (owns GTK windows, starts hidden).
-        let ui_manager = ui::UiManager::new(app);
+        let ui_manager = ui::UiManager::new(app, &ui_config);
 
         // Bridge: receive UI commands from tokio and dispatch on the GTK thread.
         glib::spawn_future_local(async move {

@@ -316,7 +316,12 @@ impl DaemonServer {
             }
 
             Command::ModeShow { mode } => {
-                self.send_ui_command(UiCommand::ModeShow { mode });
+                let mode_config = self.resolve_mode_config(mode.as_deref());
+                self.send_ui_command(UiCommand::ModeShow {
+                    mode,
+                    mode_config,
+                    ui_config: self.state.ui_config.clone(),
+                });
                 Response::Ok
             }
             Command::ModeHide => {
@@ -324,7 +329,12 @@ impl DaemonServer {
                 Response::Ok
             }
             Command::ModeToggle { mode } => {
-                self.send_ui_command(UiCommand::ModeToggle { mode });
+                let mode_config = self.resolve_mode_config(mode.as_deref());
+                self.send_ui_command(UiCommand::ModeToggle {
+                    mode,
+                    mode_config,
+                    ui_config: self.state.ui_config.clone(),
+                });
                 Response::Ok
             }
             Command::ScratchpadPick => {
@@ -412,6 +422,14 @@ impl DaemonServer {
 
         if is_reload {
             self.notifier.notify_info("Config", "Configuration reloaded");
+        }
+    }
+
+    /// Resolve a mode name to its config. If `name` is None, uses the first defined mode.
+    fn resolve_mode_config(&self, name: Option<&str>) -> Option<niri_tools_common::config::ModeConfig> {
+        match name {
+            Some(n) => self.state.mode_configs.get(n).cloned(),
+            None => self.state.mode_configs.values().next().cloned(),
         }
     }
 
