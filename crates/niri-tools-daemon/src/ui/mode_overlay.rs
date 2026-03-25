@@ -2,6 +2,7 @@ use gtk4::prelude::*;
 use gtk4::{ApplicationWindow, CssProvider, Label};
 use gtk4_layer_shell::LayerShell;
 use niri_tools_common::config::{BindAction, ModeConfig, UiConfig};
+use niri_tools_common::niri_config;
 
 use super::css;
 
@@ -45,8 +46,9 @@ pub fn create_mode_overlay(app: &gtk4::Application, ui_config: &UiConfig) -> App
         window.set_margin(gtk4_layer_shell::Edge::Left, m);
     }
 
-    // Load CSS
-    let css_text = css::generate_css(ui_config);
+    // Load CSS with niri style hints
+    let hints = niri_config::read_niri_style_hints();
+    let css_text = css::generate_css(ui_config, &hints);
     let provider = CssProvider::new();
     provider.load_from_data(&css_text);
     gtk4::style_context_add_provider_for_display(

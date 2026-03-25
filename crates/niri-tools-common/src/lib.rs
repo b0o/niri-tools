@@ -1,6 +1,7 @@
 pub mod config;
 pub mod config_parser;
 pub mod error;
+pub mod niri_config;
 pub mod paths;
 pub mod protocol;
 pub mod traits;
