@@ -50,6 +50,9 @@ pub fn load_config(config_path: Option<&Path>) -> Result<LoadedConfig, NiriTools
 
     load_file(&path, &mut visited, &mut config)?;
 
+    // Validate after all parsing
+    validate_config(&mut config);
+
     Ok(config)
 }
 
@@ -580,6 +583,62 @@ fn parse_modes_ui(node: &KdlNode) -> ModesUiConfig {
         border_width: children
             .get_arg("border-width")
             .and_then(|v| v.as_i64().map(|i| i as f64).or_else(|| v.as_f64())),
+    }
+}
+
+/// Validate the fully-loaded config and emit warnings for issues.
+fn validate_config(config: &mut LoadedConfig) {
+    let mode_names: HashSet<&str> = config.modes.keys().map(|s| s.as_str()).collect();
+
+    for mode in config.modes.values() {
+        // Check for duplicate keys within a mode
+        let mut seen_keys: HashSet<&str> = HashSet::new();
+        for bind in &mode.binds {
+            if !seen_keys.insert(&bind.key) {
+                config.warnings.push(format!(
+                    "Mode \"{}\": duplicate key \"{}\"",
+                    mode.name, bind.key
+                ));
+            }
+            // Also check aliases
+            for opt in &bind.options {
+                if let BindOption::Alias(alias) = opt {
+                    if !seen_keys.insert(alias.as_str()) {
+                        config.warnings.push(format!(
+                            "Mode \"{}\": duplicate key/alias \"{}\"",
+                            mode.name, alias
+                        ));
+                    }
+                }
+            }
+        }
+
+        // Check for invalid switch-mode references
+        for bind in &mode.binds {
+            if let BindAction::SwitchMode(ref target) = bind.action {
+                if !mode_names.contains(target.as_str()) {
+                    config.warnings.push(format!(
+                        "Mode \"{}\": bind \"{}\" references undefined mode \"{}\"",
+                        mode.name, bind.key, target
+                    ));
+                }
+            }
+        }
+    }
+
+    // Check for scratchpad key conflicts
+    let mut key_owners: HashMap<&str, &str> = HashMap::new();
+    for sp in config.scratchpads.values() {
+        if let Some(ref key) = sp.key {
+            if let Some(existing) = key_owners.get(key.as_str()) {
+                config.warnings.push(format!(
+                    "Scratchpad key \"{}\" conflict: used by both \"{}\" and \"{}\"",
+                    key, existing, sp.name
+                ));
+            } else {
+                key_owners.insert(key.as_str(), &sp.name);
+            }
+        }
     }
 }
 
@@ -1232,6 +1291,99 @@ scratchpad "browser" {
         assert!(sp.size.is_some());
         assert!(sp.position.is_some());
         assert!(sp.command.is_none());
+    }
+
+    // ── Validation ─────────────────────────────────────────────────
+
+    #[test]
+    fn validate_warns_on_invalid_switch_mode_reference() {
+        let cfg = load_from_str(
+            r#"
+mode "root" {
+    binds {
+        b "Bad" { switch-mode "nonexistent"; }
+    }
+}
+"#,
+        )
+        .unwrap();
+        assert!(cfg
+            .warnings
+            .iter()
+            .any(|w| w.contains("nonexistent") && w.contains("undefined mode")));
+    }
+
+    #[test]
+    fn validate_warns_on_duplicate_keys_in_mode() {
+        let cfg = load_from_str(
+            r#"
+mode "root" {
+    binds {
+        a "First" { spawn-sh "echo 1"; }
+        a "Second" { spawn-sh "echo 2"; }
+    }
+}
+"#,
+        )
+        .unwrap();
+        assert!(cfg
+            .warnings
+            .iter()
+            .any(|w| w.contains("duplicate key") && w.contains("\"a\"")));
+    }
+
+    #[test]
+    fn validate_warns_on_scratchpad_key_conflict() {
+        let cfg = load_from_str(
+            r#"
+scratchpad "term" {
+    app-id "ghostty"
+    key "t"
+}
+scratchpad "todo" {
+    app-id "todoist"
+    key "t"
+}
+"#,
+        )
+        .unwrap();
+        assert!(cfg
+            .warnings
+            .iter()
+            .any(|w| w.contains("key \"t\" conflict")));
+    }
+
+    #[test]
+    fn validate_no_warnings_for_valid_config() {
+        let cfg = load_from_str(
+            r#"
+mode "root" {
+    binds {
+        a "A" { spawn-sh "echo a"; }
+        b "B" { switch-mode "sub"; }
+    }
+}
+mode "sub" {
+    binds {
+        x "X" { spawn-sh "echo x"; }
+    }
+}
+scratchpad "term" {
+    app-id "ghostty"
+    key "t"
+}
+scratchpad "browser" {
+    app-id "firefox"
+    key "b"
+}
+"#,
+        )
+        .unwrap();
+        assert!(
+            cfg.warnings.is_empty(),
+            "unexpected warnings: {:?}",
+            cfg.warnings
+        );
     }
 
     // ── paths::default_config_path ────────────────────────────────
