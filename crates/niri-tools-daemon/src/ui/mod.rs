@@ -1,5 +1,6 @@
 mod css;
 mod mode_overlay;
+mod scratchpad_picker;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -27,7 +28,31 @@ pub enum UiCommand {
         mode_configs: HashMap<String, ModeConfig>,
         ui_config: UiConfig,
     },
-    ScratchpadPick,
+    ScratchpadPick {
+        entries: Vec<PickerEntry>,
+    },
+}
+
+/// Data for a single scratchpad entry in the picker.
+#[derive(Debug, Clone)]
+pub struct PickerEntry {
+    pub name: String,
+    pub key: Option<String>,
+    pub desc: Option<String>,
+    pub state: PickerEntryState,
+}
+
+/// Visual state of a scratchpad in the picker.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PickerEntryState {
+    /// Has a window, currently visible
+    Visible,
+    /// Has a window, currently hidden
+    Hidden,
+    /// Has a window, floating
+    Floating,
+    /// No window spawned yet
+    Unspawned,
 }
 
 /// Shared state for the mode overlay, accessible from GTK event handlers.
@@ -48,7 +73,9 @@ struct OverlayState {
 /// tokio background thread.
 pub struct UiManager {
     mode_window: gtk4::ApplicationWindow,
+    picker_window: gtk4::ApplicationWindow,
     overlay_state: Rc<RefCell<OverlayState>>,
+    picker_state: Rc<RefCell<scratchpad_picker::PickerState>>,
 }
 
 impl UiManager {
@@ -63,16 +90,23 @@ impl UiManager {
             mode_state: ModeState::new(HashMap::new()),
             ui_config: ui_config.clone(),
             exit_on_key_release: None,
-            daemon_tx,
+            daemon_tx: daemon_tx.clone(),
         }));
 
-        // Attach keyboard handler
+        // Attach keyboard handler for mode overlay
         Self::attach_keyboard_handler(&mode_window, &overlay_state);
+
+        // Create scratchpad picker
+        let picker_window = scratchpad_picker::create_picker_window(app, ui_config);
+        let picker_state = Rc::new(RefCell::new(scratchpad_picker::PickerState::new(daemon_tx)));
+        scratchpad_picker::attach_picker_keyboard(&picker_window, &picker_state);
 
         tracing::info!("UI manager initialized");
         Self {
             mode_window,
+            picker_window,
             overlay_state,
+            picker_state,
         }
     }
 
@@ -272,8 +306,19 @@ impl UiManager {
                     });
                 }
             }
-            UiCommand::ScratchpadPick => {
-                tracing::info!("scratchpad picker (not yet implemented)");
+            UiCommand::ScratchpadPick { entries } => {
+                if self.picker_window.is_visible() {
+                    tracing::info!("scratchpad picker: hiding");
+                    self.picker_window.set_visible(false);
+                } else {
+                    tracing::info!("showing scratchpad picker");
+                    {
+                        let mut ps = self.picker_state.borrow_mut();
+                        ps.set_entries(entries);
+                    }
+                    scratchpad_picker::rebuild_picker_list(&self.picker_window, &self.picker_state);
+                    self.picker_window.present();
+                }
             }
         }
     }

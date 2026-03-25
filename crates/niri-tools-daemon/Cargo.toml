@@ -9,6 +9,7 @@ rust-version.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 bincode.workspace = true
+fuzzy-matcher = "0.3"
 futures-core.workspace = true
 futures-util = "0.3"
 gdk4-wayland = { version = "0.9", package = "gdk4-wayland" }

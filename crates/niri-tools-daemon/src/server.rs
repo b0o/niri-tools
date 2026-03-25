@@ -368,7 +368,9 @@ impl DaemonServer {
                 Response::Ok
             }
             Command::ScratchpadPick => {
-                self.send_ui_command(UiCommand::ScratchpadPick);
+                self.send_ui_command(UiCommand::ScratchpadPick {
+                    entries: self.build_picker_entries(),
+                });
                 Response::Ok
             }
         }
@@ -453,6 +455,52 @@ impl DaemonServer {
         if is_reload {
             self.notifier.notify_info("Config", "Configuration reloaded");
         }
+    }
+
+    /// Build picker entries from current scratchpad state.
+    fn build_picker_entries(&self) -> Vec<crate::ui::PickerEntry> {
+        use crate::ui::{PickerEntry, PickerEntryState};
+
+        self.state
+            .scratchpad_configs
+            .values()
+            .map(|config| {
+                let sp_state = self.state.scratchpads.get(&config.name);
+                let has_window = sp_state.and_then(|s| s.window_id).is_some();
+                let is_visible = sp_state.is_some_and(|s| s.visible);
+
+                // Check if the window is floating
+                let is_floating = if let Some(sp) = sp_state {
+                    if let Some(wid) = sp.window_id {
+                        self.state
+                            .windows
+                            .get(&wid)
+                            .is_some_and(|w| w.is_floating)
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+
+                let state = if !has_window {
+                    PickerEntryState::Unspawned
+                } else if is_visible && is_floating {
+                    PickerEntryState::Floating
+                } else if is_visible {
+                    PickerEntryState::Visible
+                } else {
+                    PickerEntryState::Hidden
+                };
+
+                PickerEntry {
+                    name: config.name.clone(),
+                    key: config.key.clone(),
+                    desc: config.desc.clone(),
+                    state,
+                }
+            })
+            .collect()
     }
 
     /// Resolve a mode name to its config. If `name` is None, uses the first defined mode.
