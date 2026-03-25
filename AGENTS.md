@@ -49,8 +49,13 @@ Run `cat crates/*/Cargo.toml` to see current dependencies for each crate.
 |---|---|
 | `types.rs` | Core data types: `WindowInfo`, `WorkspaceInfo`, `OutputInfo`, `NiriEvent` |
 | `protocol.rs` | IPC protocol: `Command`/`Response` enums, length-prefixed bincode wire format |
-| `config.rs` | Config structs: `ScratchpadConfig`, `SizeConfig`, `PositionConfig`, `OutputOverride`, `DaemonSettings` |
-| `config_parser.rs` | KDL config file parser with include resolution and cycle detection |
+| `config/mod.rs` | Re-exports all config sub-modules |
+| `config/scratchpad.rs` | `ScratchpadConfig`, `SizeConfig`, `PositionConfig`, `OutputOverride` |
+| `config/settings.rs` | `DaemonSettings`, `NotifyLevel` |
+| `config/mode.rs` | `ModeConfig`, `BindConfig`, `BindAction`, `BindOption` |
+| `config/ui.rs` | `UiConfig`, `ModesUiConfig`, `ScratchpadsUiConfig` |
+| `config_parser.rs` | KDL config file parser with include resolution, cycle detection, and validation |
+| `niri_config.rs` | Parser for niri's config.kdl to extract style hints (accent color, border width) |
 | `traits.rs` | `NiriClient` and `Notifier` traits (for dependency injection in tests) |
 | `error.rs` | `NiriToolsError` enum |
 | `paths.rs` | XDG-compliant path helpers: socket, config, state file |
@@ -59,13 +64,18 @@ Run `cat crates/*/Cargo.toml` to see current dependencies for each crate.
 
 | File | Responsibility |
 |---|---|
-| `main.rs` | Entry point: tracing setup, creates real implementations, starts server |
+| `main.rs` | Entry point: GTK4 main loop + tokio background runtime, UI/daemon channel setup |
 | `server.rs` | `DaemonServer`: socket listener, event loop (`tokio::select!`), command dispatch, config reload |
 | `state.rs` | `DaemonState`: in-memory state, JSON persistence, reconciliation |
 | `scratchpad.rs` | `ScratchpadManager`: toggle/hide/float/tile/spawn logic, position/size calculations, window matching |
+| `mode.rs` | `ModeState`: mode stack, navigation, bind lookup with alias support |
 | `events.rs` | Event parsing (niri JSON -> `NiriEvent`), event application to state |
 | `niri.rs` | `RealNiriClient`: shells out to `niri msg` for actions/queries, subscribes to event stream |
 | `notify.rs` | `RealNotifier`: sends notifications via `dms` (preferred) or `notify-send` (fallback) |
+| `ui/mod.rs` | `UiManager`: owns both GTK windows, bridges IPC commands to GTK thread |
+| `ui/mode_overlay.rs` | Mode overlay window: layer-shell setup, widget tree, CSS loading |
+| `ui/scratchpad_picker.rs` | Scratchpad picker window: fuzzy search list, shortcut dispatch, state indicators |
+| `ui/css.rs` | CSS generation from resolved `UiConfig` + niri style hints |
 
 ### niri-tools (CLI binary)
 
@@ -94,6 +104,10 @@ niri-tools scratchpad hide
 niri-tools scratchpad toggle-float [name]
 niri-tools scratchpad float [name]
 niri-tools scratchpad tile [name]
+niri-tools scratchpad pick
+niri-tools mode show [name]
+niri-tools mode hide
+niri-tools mode toggle [name]
 niri-tools smart-focus --id <window-id>
 ```
 
@@ -107,7 +121,7 @@ The original Python version at `~/dotfiles/config/niri/niri_tools/` has features
 |---|---|---|
 | adopt (register existing window as scratchpad) | `daemon/scratchpad.py` | Not implemented |
 | disown (unregister a scratchpad) | `daemon/scratchpad.py` | Not implemented |
-| menu (rofi-based scratchpad picker) | `daemon/scratchpad.py` | Not implemented |
+| menu (rofi-based scratchpad picker) | `daemon/scratchpad.py` | Replaced by GTK4 scratchpad picker (`scratchpad pick`) |
 | close (with rofi confirmation) | `daemon/scratchpad.py` | Not implemented |
 | urgency handling | `daemon/urgency.py` | Not implemented |
 
