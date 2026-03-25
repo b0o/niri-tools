@@ -12,6 +12,10 @@ pub enum Command {
     Float { name: Option<String> },
     Tile { name: Option<String> },
     SmartFocus { id: u64 },
+    ModeShow { mode: Option<String> },
+    ModeHide,
+    ModeToggle { mode: Option<String> },
+    ScratchpadPick,
     DaemonStop,
     DaemonRestart,
     DaemonStatus,
@@ -288,6 +292,27 @@ mod tests {
         let decoded_resp: Response = read_message(&mut cursor).unwrap();
         assert_eq!(cmd1, decoded_cmd);
         assert_eq!(resp1, decoded_resp);
+    }
+
+    #[test]
+    fn mode_commands_roundtrip() {
+        let commands = vec![
+            Command::ModeShow {
+                mode: Some("root".to_string()),
+            },
+            Command::ModeShow { mode: None },
+            Command::ModeHide,
+            Command::ModeToggle {
+                mode: Some("brightness".to_string()),
+            },
+            Command::ModeToggle { mode: None },
+            Command::ScratchpadPick,
+        ];
+        for cmd in commands {
+            let encoded = encode_message(&cmd).unwrap();
+            let decoded: Command = decode_message(&encoded).unwrap();
+            assert_eq!(cmd, decoded);
+        }
     }
 
     #[test]

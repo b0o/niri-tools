@@ -292,6 +292,23 @@ impl DaemonServer {
                     }
                 }
             }
+
+            Command::ModeShow { mode } => {
+                tracing::info!(?mode, "mode show (not yet implemented)");
+                Response::Ok
+            }
+            Command::ModeHide => {
+                tracing::info!("mode hide (not yet implemented)");
+                Response::Ok
+            }
+            Command::ModeToggle { mode } => {
+                tracing::info!(?mode, "mode toggle (not yet implemented)");
+                Response::Ok
+            }
+            Command::ScratchpadPick => {
+                tracing::info!("scratchpad pick (not yet implemented)");
+                Response::Ok
+            }
         }
     }
 
