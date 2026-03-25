@@ -37,6 +37,22 @@
           };
           cargoLock.lockFile = ./Cargo.lock;
           buildType = "release";
+
+          nativeBuildInputs = [
+            pkgs.pkg-config
+            pkgs.wrapGAppsHook4
+          ];
+          buildInputs = [
+            pkgs.gtk4
+            pkgs.gtk4-layer-shell
+            pkgs.wayland
+            pkgs.pango
+            pkgs.glib
+            pkgs.cairo
+            pkgs.graphene
+            pkgs.gdk-pixbuf
+            pkgs.harfbuzz
+          ];
         };
       in {
         packages = {
@@ -47,10 +63,22 @@
         devShells.default = pkgs.mkShell {
           name = "niri-tools";
 
+          nativeBuildInputs = [
+            pkgs.pkg-config
+          ];
+
           buildInputs = [
             rust
             pkgs.dprint
-            niri-tools
+            pkgs.gtk4
+            pkgs.gtk4-layer-shell
+            pkgs.wayland
+            pkgs.pango
+            pkgs.glib
+            pkgs.cairo
+            pkgs.graphene
+            pkgs.gdk-pixbuf
+            pkgs.harfbuzz
           ];
         };
       }
