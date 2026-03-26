@@ -78,6 +78,46 @@ window {{
     opacity: 0.2;
 }}
 
+/* ── Scratchpad picker ───────────────────────────── */
+
+.picker-container {{
+    background-color: {bg};
+    border-radius: {radius}px;
+    padding: 4px 0;
+}}
+
+.picker-search {{
+    padding: 2px 8px;
+    margin-bottom: 2px;
+    color: {accent};
+}}
+
+.picker-search-empty {{
+    opacity: 0.3;
+}}
+
+.picker-row {{
+    padding: 1px 8px;
+}}
+
+.picker-row-selected {{
+    background-color: alpha({fg}, 0.1);
+}}
+
+.picker-state {{
+    min-width: 12px;
+    margin-right: 4px;
+}}
+
+.picker-key {{
+    color: {accent};
+    min-width: 16px;
+    margin-right: 8px;
+}}
+
+.picker-name {{
+}}
+
 .state-visible {{
     color: {accent};
 }}

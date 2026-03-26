@@ -113,62 +113,74 @@ pub fn create_picker_window(app: &gtk4::Application, ui_config: &UiConfig) -> Ap
 pub fn rebuild_picker_list(window: &ApplicationWindow, state: &Rc<RefCell<PickerState>>) {
     let s = state.borrow();
 
-    let container = gtk4::Box::new(gtk4::Orientation::Vertical, 4);
-    container.add_css_class("mode-container"); // Reuse mode container style
+    let container = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+    container.add_css_class("picker-container");
 
-    // Search indicator
-    if !s.search_buffer.is_empty() {
-        let search_label = Label::new(Some(&format!("/{}", s.search_buffer)));
-        search_label.add_css_class("mode-desc");
-        search_label.set_halign(gtk4::Align::Start);
-        container.append(&search_label);
-
-        let sep = gtk4::Separator::new(gtk4::Orientation::Horizontal);
-        container.append(&sep);
+    // Search bar (always visible -- shows "/" prompt when empty)
+    let search_text = if s.search_buffer.is_empty() {
+        "/".to_string()
+    } else {
+        format!("/{}", s.search_buffer)
+    };
+    let search_label = Label::new(Some(&search_text));
+    search_label.add_css_class("picker-search");
+    search_label.set_halign(gtk4::Align::Start);
+    if s.search_buffer.is_empty() {
+        search_label.add_css_class("picker-search-empty");
     }
+    container.append(&search_label);
 
     // Filtered entries
     for (display_idx, &entry_idx) in s.filtered_indices.iter().enumerate() {
         let entry = &s.entries[entry_idx];
-        let row = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
+        let row = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
+        row.add_css_class("picker-row");
 
-        // Key shortcut
-        let key_text = entry
-            .key
-            .as_ref()
-            .map(|k| format!("[{}]", k))
-            .unwrap_or_else(|| "[ ]".to_string());
-        let key_label = Label::new(Some(&key_text));
-        key_label.add_css_class("mode-key");
-        row.append(&key_label);
+        if display_idx == s.selected_index {
+            row.add_css_class("picker-row-selected");
+        }
 
-        // Name/description
-        let display_name = entry.desc.as_deref().unwrap_or(&entry.name);
-        let name_label = Label::new(Some(display_name));
-        name_label.add_css_class("mode-desc");
-        row.append(&name_label);
-
-        // State indicator
-        let (state_text, state_class) = match entry.state {
-            PickerEntryState::Visible => ("●", "state-visible"),
-            PickerEntryState::Floating => ("◆", "state-floating"),
-            PickerEntryState::Hidden => ("○", "mode-desc"),
-            PickerEntryState::Unspawned => ("·", "state-unspawned"),
+        // State indicator (left side)
+        let state_char = match entry.state {
+            PickerEntryState::Visible => "●",
+            PickerEntryState::Floating => "◆",
+            PickerEntryState::Hidden => "○",
+            PickerEntryState::Unspawned => " ",
         };
-        let state_label = Label::new(Some(state_text));
-        state_label.add_css_class(state_class);
+        let state_label = Label::new(Some(state_char));
+        state_label.add_css_class("picker-state");
+        match entry.state {
+            PickerEntryState::Visible => state_label.add_css_class("state-visible"),
+            PickerEntryState::Floating => state_label.add_css_class("state-floating"),
+            PickerEntryState::Unspawned => state_label.add_css_class("state-unspawned"),
+            _ => {}
+        }
         row.append(&state_label);
 
-        // Highlight selected row
-        if display_idx == s.selected_index {
-            row.add_css_class("mode-desc-mode");
+        // Key shortcut
+        if let Some(ref key) = entry.key {
+            let key_label = Label::new(Some(key));
+            key_label.add_css_class("picker-key");
+            row.append(&key_label);
+        } else {
+            let spacer = Label::new(Some(" "));
+            spacer.add_css_class("picker-key");
+            row.append(&spacer);
         }
+
+        // Name
+        let display_name = entry.desc.as_deref().unwrap_or(&entry.name);
+        let name_label = Label::new(Some(display_name));
+        name_label.add_css_class("picker-name");
+        name_label.set_hexpand(true);
+        name_label.set_halign(gtk4::Align::Start);
+        row.append(&name_label);
 
         container.append(&row);
     }
 
     if s.filtered_indices.is_empty() && !s.entries.is_empty() {
-        let empty_label = Label::new(Some("No matches"));
+        let empty_label = Label::new(Some("  no matches"));
         empty_label.add_css_class("state-unspawned");
         container.append(&empty_label);
     }
