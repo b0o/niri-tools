@@ -344,7 +344,16 @@ impl DaemonServer {
             }
 
             Command::ModeShow { mode } => {
+                if self.state.mode_configs.is_empty() {
+                    return Response::Error("No modes defined in config".to_string());
+                }
                 let mode_config = self.resolve_mode_config(mode.as_deref());
+                if mode_config.is_none() {
+                    return Response::Error(format!(
+                        "Mode {:?} not found",
+                        mode.as_deref().unwrap_or("(default)")
+                    ));
+                }
                 self.send_ui_command(UiCommand::ModeShow {
                     mode,
                     mode_config,
@@ -358,7 +367,16 @@ impl DaemonServer {
                 Response::Ok
             }
             Command::ModeToggle { mode } => {
+                if self.state.mode_configs.is_empty() {
+                    return Response::Error("No modes defined in config".to_string());
+                }
                 let mode_config = self.resolve_mode_config(mode.as_deref());
+                if mode_config.is_none() {
+                    return Response::Error(format!(
+                        "Mode {:?} not found",
+                        mode.as_deref().unwrap_or("(default)")
+                    ));
+                }
                 self.send_ui_command(UiCommand::ModeToggle {
                     mode,
                     mode_config,
@@ -461,7 +479,7 @@ impl DaemonServer {
     fn build_picker_entries(&self) -> Vec<crate::ui::PickerEntry> {
         use crate::ui::{PickerEntry, PickerEntryState};
 
-        self.state
+        let mut entries: Vec<_> = self.state
             .scratchpad_configs
             .values()
             .map(|config| {
@@ -500,7 +518,21 @@ impl DaemonServer {
                     state,
                 }
             })
-            .collect()
+            .collect::<Vec<_>>();
+
+        // Sort: visible/floating first, then hidden, then unspawned. Within each group, alphabetical.
+        entries.sort_by(|a, b| {
+            let state_order = |s: &PickerEntryState| match s {
+                PickerEntryState::Visible | PickerEntryState::Floating => 0,
+                PickerEntryState::Hidden => 1,
+                PickerEntryState::Unspawned => 2,
+            };
+            state_order(&a.state)
+                .cmp(&state_order(&b.state))
+                .then_with(|| a.name.cmp(&b.name))
+        });
+
+        entries
     }
 
     /// Resolve a mode name to its config. If `name` is None, uses the first defined mode.
