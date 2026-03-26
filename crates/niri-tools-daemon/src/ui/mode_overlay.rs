@@ -57,6 +57,13 @@ pub fn create_mode_overlay(app: &gtk4::Application, ui_config: &UiConfig) -> App
         gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
     );
 
+    // Set a placeholder child so GTK has something to measure during
+    // the initial layout pass triggered by init_layer_shell().
+    // Without this, GTK warns: "Allocating size to GtkBox without
+    // calling gtk_widget_measure()".
+    let placeholder = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
+    window.set_child(Some(&placeholder));
+
     tracing::info!("mode overlay window created (hidden)");
 
     window
