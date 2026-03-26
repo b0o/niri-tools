@@ -1355,6 +1355,25 @@ scratchpad "todo" {
     }
 
     #[test]
+    fn parse_hidden_bind() {
+        let cfg = load_from_str(
+            r#"
+mode "root" {
+    binds {
+        a "Visible" { spawn-sh "echo a"; }
+        b "Hidden" { hide; spawn-sh "echo b"; }
+    }
+}
+"#,
+        )
+        .unwrap();
+        let root = &cfg.modes["root"];
+        assert_eq!(root.binds.len(), 2);
+        assert!(!root.binds[0].options.contains(&BindOption::Hide));
+        assert!(root.binds[1].options.contains(&BindOption::Hide));
+    }
+
+    #[test]
     fn validate_no_warnings_for_valid_config() {
         let cfg = load_from_str(
             r#"
