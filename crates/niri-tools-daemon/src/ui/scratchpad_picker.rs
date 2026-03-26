@@ -214,8 +214,24 @@ fn handle_picker_key(
 ) -> gtk4::glib::Propagation {
     let key_name = keyval.name().map(|s| s.to_string()).unwrap_or_default();
 
-    // Escape: close
+    // Escape: clear search first, then close
     if key_name == "Escape" {
+        let mut s = state.borrow_mut();
+        if !s.search_buffer.is_empty() {
+            s.search_buffer.clear();
+            s.update_filtered();
+            drop(s);
+            rebuild_picker_list(window, state);
+        } else {
+            drop(s);
+            window.set_visible(false);
+        }
+        return gtk4::glib::Propagation::Stop;
+    }
+
+    // Ctrl+[ and Ctrl+g also close (vim convention)
+    let has_ctrl = modifiers.contains(gtk4::gdk::ModifierType::CONTROL_MASK);
+    if (has_ctrl && key_name == "bracketleft") || (has_ctrl && key_name == "g") {
         window.set_visible(false);
         return gtk4::glib::Propagation::Stop;
     }
@@ -250,10 +266,8 @@ fn handle_picker_key(
         return gtk4::glib::Propagation::Stop;
     }
 
-    // Up/Down: navigate
-    if key_name == "Up"
-        || key_name == "k" && modifiers.contains(gtk4::gdk::ModifierType::CONTROL_MASK)
-    {
+    // Up/Ctrl+k/Ctrl+p: navigate up
+    if key_name == "Up" || (has_ctrl && key_name == "k") || (has_ctrl && key_name == "p") {
         let mut s = state.borrow_mut();
         if s.selected_index > 0 {
             s.selected_index -= 1;
@@ -262,15 +276,24 @@ fn handle_picker_key(
         rebuild_picker_list(window, state);
         return gtk4::glib::Propagation::Stop;
     }
-    if key_name == "Down"
-        || key_name == "j" && modifiers.contains(gtk4::gdk::ModifierType::CONTROL_MASK)
-    {
+    // Down/Ctrl+j/Ctrl+n: navigate down
+    if key_name == "Down" || (has_ctrl && key_name == "j") || (has_ctrl && key_name == "n") {
         let mut s = state.borrow_mut();
         if s.selected_index + 1 < s.filtered_indices.len() {
             s.selected_index += 1;
         }
         drop(s);
         rebuild_picker_list(window, state);
+        return gtk4::glib::Propagation::Stop;
+    }
+
+    // Tab: toggle selected without closing (for toggling multiple)
+    if key_name == "Tab" {
+        let s = state.borrow();
+        if let Some(entry) = s.selected_entry() {
+            let name = entry.name.clone();
+            let _ = s.daemon_tx.try_send(Command::Toggle { name: Some(name) });
+        }
         return gtk4::glib::Propagation::Stop;
     }
 
