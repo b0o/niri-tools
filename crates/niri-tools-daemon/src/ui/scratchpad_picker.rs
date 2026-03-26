@@ -103,6 +103,7 @@ pub fn create_picker_window(app: &gtk4::Application, ui_config: &UiConfig) -> Ap
     // Set a placeholder child so GTK has something to measure during
     // the initial layout pass triggered by init_layer_shell().
     let placeholder = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
+    placeholder.set_size_request(1, 1);
     window.set_child(Some(&placeholder));
 
     tracing::info!("scratchpad picker window created (hidden)");

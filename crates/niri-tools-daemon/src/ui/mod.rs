@@ -257,22 +257,22 @@ impl UiManager {
                 mode_configs,
                 ui_config,
             } => {
-                tracing::info!(?mode, "showing mode overlay");
+                let Some(ref config) = mode_config else {
+                    tracing::warn!(?mode, "no mode config found, ignoring show");
+                    return;
+                };
+
+                tracing::info!(mode = config.name, "showing mode overlay");
                 let mut s = self.overlay_state.borrow_mut();
                 s.mode_state.update_modes(mode_configs);
                 s.ui_config = ui_config.clone();
                 s.exit_on_key_release = None;
 
-                // Push the requested mode (or first mode)
                 s.mode_state.clear();
-                if let Some(ref config) = mode_config {
-                    s.mode_state.push_mode(&config.name);
-                }
-
-                if let Some(ref config) = mode_config {
-                    mode_overlay::rebuild_mode(&self.mode_window, config, &ui_config);
-                }
+                s.mode_state.push_mode(&config.name);
                 drop(s);
+
+                mode_overlay::rebuild_mode(&self.mode_window, config, &ui_config);
                 self.mode_window.present();
             }
             UiCommand::ModeHide => {
