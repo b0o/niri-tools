@@ -83,7 +83,6 @@ pub fn create_picker_window(app: &gtk4::Application, ui_config: &UiConfig) -> Ap
         .title("niri-tools-scratchpad-picker")
         .resizable(false)
         .decorated(false)
-        .default_width(400)
         .build();
 
     window.init_layer_shell();
@@ -174,6 +173,9 @@ pub fn rebuild_picker_list(window: &ApplicationWindow, state: &Rc<RefCell<Picker
         container.append(&empty_label);
     }
 
+    // Reset the window's default size so GTK re-measures from the new content
+    // rather than trying to fit it into the old allocation.
+    window.set_default_size(-1, -1);
     window.set_child(Some(&container));
 }
 

@@ -111,5 +111,9 @@ pub fn rebuild_mode(window: &ApplicationWindow, mode: &ModeConfig, ui_config: &U
     }
 
     container.append(&column);
+
+    // Reset the window's default size so GTK re-measures from the new content
+    // rather than trying to fit it into the old allocation.
+    window.set_default_size(-1, -1);
     window.set_child(Some(&container));
 }
