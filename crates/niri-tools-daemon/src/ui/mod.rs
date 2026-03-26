@@ -322,6 +322,7 @@ impl UiManager {
                     {
                         let mut ps = self.picker_state.borrow_mut();
                         ps.set_entries(entries);
+                        ps.exit_on_key_release = None;
                     }
                     scratchpad_picker::rebuild_picker_list(&self.picker_window, &self.picker_state);
                     self.picker_window.present();

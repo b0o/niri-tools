@@ -18,6 +18,8 @@ pub struct PickerState {
     pub selected_index: usize,
     pub filtered_indices: Vec<usize>,
     pub daemon_tx: tokio::sync::mpsc::Sender<Command>,
+    /// Keycode that triggered a close action. The picker hides on release.
+    pub exit_on_key_release: Option<u32>,
 }
 
 impl PickerState {
@@ -28,6 +30,7 @@ impl PickerState {
             selected_index: 0,
             filtered_indices: Vec::new(),
             daemon_tx,
+            exit_on_key_release: None,
         }
     }
 
@@ -198,8 +201,21 @@ pub fn attach_picker_keyboard(window: &ApplicationWindow, state: &Rc<RefCell<Pic
     {
         let state = state.clone();
         let window = window.clone();
-        key_controller.connect_key_pressed(move |_, keyval, _keycode, modifiers| {
-            handle_picker_key(&window, &state, keyval, modifiers)
+        key_controller.connect_key_pressed(move |_, keyval, keycode, modifiers| {
+            handle_picker_key(&window, &state, keyval, keycode, modifiers)
+        });
+    }
+
+    {
+        let state = state.clone();
+        let window = window.clone();
+        key_controller.connect_key_released(move |_, _keyval, keycode, _modifiers| {
+            let mut s = state.borrow_mut();
+            if s.exit_on_key_release == Some(keycode) {
+                s.exit_on_key_release = None;
+                drop(s);
+                window.set_visible(false);
+            }
         });
     }
 
@@ -210,9 +226,18 @@ fn handle_picker_key(
     window: &ApplicationWindow,
     state: &Rc<RefCell<PickerState>>,
     keyval: gtk4::gdk::Key,
+    keycode: u32,
     modifiers: gtk4::gdk::ModifierType,
 ) -> gtk4::glib::Propagation {
     let key_name = keyval.name().map(|s| s.to_string()).unwrap_or_default();
+
+    // If waiting for a key release to exit, ignore new presses
+    {
+        let s = state.borrow();
+        if s.exit_on_key_release.is_some() {
+            return gtk4::glib::Propagation::Stop;
+        }
+    }
 
     // Escape: clear search first, then close
     if key_name == "Escape" {
@@ -223,8 +248,7 @@ fn handle_picker_key(
             drop(s);
             rebuild_picker_list(window, state);
         } else {
-            drop(s);
-            window.set_visible(false);
+            s.exit_on_key_release = Some(keycode);
         }
         return gtk4::glib::Propagation::Stop;
     }
@@ -232,7 +256,8 @@ fn handle_picker_key(
     // Ctrl+[ and Ctrl+g also close (vim convention)
     let has_ctrl = modifiers.contains(gtk4::gdk::ModifierType::CONTROL_MASK);
     if (has_ctrl && key_name == "bracketleft") || (has_ctrl && key_name == "g") {
-        window.set_visible(false);
+        let mut s = state.borrow_mut();
+        s.exit_on_key_release = Some(keycode);
         return gtk4::glib::Propagation::Stop;
     }
 
@@ -240,7 +265,7 @@ fn handle_picker_key(
     let has_super = modifiers.contains(gtk4::gdk::ModifierType::META_MASK)
         || modifiers.contains(gtk4::gdk::ModifierType::SUPER_MASK);
     if has_super {
-        let s = state.borrow_mut();
+        let mut s = state.borrow_mut();
         if let Some(entry) = s.entries.iter().find(|e| {
             e.key
                 .as_ref()
@@ -248,20 +273,18 @@ fn handle_picker_key(
         }) {
             let name = entry.name.clone();
             let _ = s.daemon_tx.try_send(Command::Toggle { name: Some(name) });
-            drop(s);
-            window.set_visible(false);
+            s.exit_on_key_release = Some(keycode);
         }
         return gtk4::glib::Propagation::Stop;
     }
 
-    // Enter: toggle selected
+    // Enter: toggle selected and close
     if key_name == "Return" || key_name == "KP_Enter" {
-        let s = state.borrow();
+        let mut s = state.borrow_mut();
         if let Some(entry) = s.selected_entry() {
             let name = entry.name.clone();
             let _ = s.daemon_tx.try_send(Command::Toggle { name: Some(name) });
-            drop(s);
-            window.set_visible(false);
+            s.exit_on_key_release = Some(keycode);
         }
         return gtk4::glib::Propagation::Stop;
     }
