@@ -19,6 +19,7 @@ pub struct BindConfig {
 pub enum BindOption {
     KeepOpen,
     Close,
+    Hide,
     Alias(String),
 }
 

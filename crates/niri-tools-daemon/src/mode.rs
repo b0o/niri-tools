@@ -79,6 +79,15 @@ impl ModeState {
     pub fn current_keep_open(&self) -> bool {
         self.current_mode().is_some_and(|m| m.keep_open)
     }
+
+    /// Get the mode stack as a breadcrumb string (e.g., "root > brightness").
+    /// Returns `None` if the stack is empty.
+    pub fn breadcrumb(&self) -> Option<String> {
+        if self.mode_stack.len() <= 1 {
+            return None;
+        }
+        Some(self.mode_stack.join(" > "))
+    }
 }
 
 #[cfg(test)]

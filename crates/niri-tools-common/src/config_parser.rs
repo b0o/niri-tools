@@ -428,6 +428,7 @@ fn parse_bind_children(
         match name {
             "keep-open" => options.push(BindOption::KeepOpen),
             "close" => options.push(BindOption::Close),
+            "hide" => options.push(BindOption::Hide),
             "alias" => {
                 if let Some(alias_str) = child.get(0).and_then(|e| e.value().as_string()) {
                     options.push(BindOption::Alias(alias_str.to_string()));

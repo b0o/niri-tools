@@ -69,6 +69,11 @@ window {{
     opacity: 0.8;
 }}
 
+.mode-breadcrumb {{
+    opacity: 0.4;
+    margin-right: 4px;
+}}
+
 .mode-entry-sep {{
     opacity: 0.2;
 }}

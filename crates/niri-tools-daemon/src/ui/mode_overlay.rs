@@ -70,9 +70,16 @@ pub fn create_mode_overlay(app: &gtk4::Application, ui_config: &UiConfig) -> App
 /// Rebuild the overlay widget tree to display binds from the given mode.
 ///
 /// Layout: a single horizontal row of entries, centered within the container.
-/// Each entry shows `key  description` as a cohesive unit with clear visual
-/// separation between entries via spacing.
-pub fn rebuild_mode(window: &ApplicationWindow, mode: &ModeConfig, ui_config: &UiConfig) {
+/// Each entry shows `key description` as a cohesive unit with clear visual
+/// separation between entries via dot separators.
+///
+/// When in a sub-mode, a breadcrumb is shown (e.g., "root > brightness").
+pub fn rebuild_mode(
+    window: &ApplicationWindow,
+    mode: &ModeConfig,
+    ui_config: &UiConfig,
+    breadcrumb: Option<&str>,
+) {
     let min_width = ui_config.modes.min_width.unwrap_or(0.0) as i32;
     let padding = ui_config.modes.padding.unwrap_or(4.0) as i32;
 
@@ -93,9 +100,28 @@ pub fn rebuild_mode(window: &ApplicationWindow, mode: &ModeConfig, ui_config: &U
     row.set_margin_top(padding);
     row.set_margin_bottom(padding);
 
-    for (i, bind) in mode.binds.iter().enumerate() {
+    // Breadcrumb when in a sub-mode
+    if let Some(crumb) = breadcrumb {
+        let crumb_label = Label::new(Some(crumb));
+        crumb_label.add_css_class("mode-breadcrumb");
+        row.append(&crumb_label);
+
+        let sep = Label::new(Some("│"));
+        sep.add_css_class("mode-entry-sep");
+        row.append(&sep);
+    }
+
+    let visible_binds: Vec<_> = mode
+        .binds
+        .iter()
+        .filter(|b| {
+            !b.options
+                .contains(&niri_tools_common::config::BindOption::Hide)
+        })
+        .collect();
+
+    for (i, bind) in visible_binds.iter().enumerate() {
         if i > 0 {
-            // Visual separator between entries
             let spacer = Label::new(Some("·"));
             spacer.add_css_class("mode-entry-sep");
             row.append(&spacer);

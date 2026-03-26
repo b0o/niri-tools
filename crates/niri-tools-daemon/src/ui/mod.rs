@@ -174,8 +174,9 @@ impl UiManager {
                 if let Some(mode) = s.mode_state.current_mode() {
                     let mode = mode.clone();
                     let ui_config = s.ui_config.clone();
+                    let breadcrumb = s.mode_state.breadcrumb();
                     drop(s);
-                    mode_overlay::rebuild_mode(window, &mode, &ui_config);
+                    mode_overlay::rebuild_mode(window, &mode, &ui_config, breadcrumb.as_deref());
                 }
             } else {
                 // At root mode, close
@@ -206,8 +207,14 @@ impl UiManager {
                     if let Some(mode) = s.mode_state.current_mode() {
                         let mode = mode.clone();
                         let ui_config = s.ui_config.clone();
+                        let breadcrumb = s.mode_state.breadcrumb();
                         drop(s);
-                        mode_overlay::rebuild_mode(window, &mode, &ui_config);
+                        mode_overlay::rebuild_mode(
+                            window,
+                            &mode,
+                            &ui_config,
+                            breadcrumb.as_deref(),
+                        );
                     }
                     return gtk4::glib::Propagation::Stop;
                 }
@@ -272,7 +279,7 @@ impl UiManager {
                 s.mode_state.push_mode(&config.name);
                 drop(s);
 
-                mode_overlay::rebuild_mode(&self.mode_window, config, &ui_config);
+                mode_overlay::rebuild_mode(&self.mode_window, config, &ui_config, None);
                 self.mode_window.present();
             }
             UiCommand::ModeHide => {
