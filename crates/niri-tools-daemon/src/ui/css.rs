@@ -41,8 +41,6 @@ pub fn generate_css(config: &UiConfig, hints: &NiriStyleHints) -> String {
         .or(config.corner_radius)
         .unwrap_or(2.0);
 
-    let padding = config.modes.padding.unwrap_or(4.0);
-
     // Accent color: modes ui > global ui > niri config > hardcoded default
     let accent = hints.accent_color.as_deref().unwrap_or("#8ec07c");
 
@@ -63,34 +61,24 @@ pub fn generate_css(config: &UiConfig, hints: &NiriStyleHints) -> String {
     background-color: transparent;
 }}
 
+/* ── Mode overlay ────────────────────────────────── */
+
 .mode-container {{
     background-color: {bg};
     border-radius: {radius}px;
-    padding: {padding}px;
     {border_css}
 }}
 
-.mode-flow {{
-    padding: 0;
-}}
-
-flowboxchild {{
-    padding: 0;
-    margin: 0;
+.mode-entry {{
+    padding: 0 4px;
 }}
 
 .mode-key {{
     font-family: {font_family};
     font-size: {font_size};
-    color: {fg};
+    color: {accent};
     font-weight: bold;
-}}
-
-.mode-sep {{
-    font-family: {font_family};
-    font-size: {font_size};
-    color: {fg};
-    opacity: 0.5;
+    margin-right: 4px;
 }}
 
 .mode-desc {{
@@ -100,8 +88,18 @@ flowboxchild {{
 }}
 
 .mode-desc-mode {{
-    color: {accent};
+    font-style: italic;
 }}
+
+.mode-entry-sep {{
+    font-family: {font_family};
+    font-size: {font_size};
+    color: {fg};
+    opacity: 0.2;
+    padding: 0 2px;
+}}
+
+/* ── Scratchpad picker ───────────────────────────── */
 
 .state-visible {{
     color: {accent};
