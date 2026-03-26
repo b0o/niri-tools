@@ -13,12 +13,13 @@ use niri_tools_common::niri_config::NiriStyleHints;
 /// - `.mode-desc` - the description label
 /// - `.mode-desc-mode` - accent class for switch-mode entries
 pub fn generate_css(config: &UiConfig, hints: &NiriStyleHints) -> String {
-    let font = config
+    let font_str = config
         .modes
         .font
         .as_deref()
         .or(config.font.as_deref())
         .unwrap_or("monospace 12");
+    let (font_family, font_size) = parse_pango_font(font_str);
 
     let bg = config
         .modes
@@ -74,19 +75,22 @@ pub fn generate_css(config: &UiConfig, hints: &NiriStyleHints) -> String {
 }}
 
 .mode-key {{
-    font: {font};
+    font-family: {font_family};
+    font-size: {font_size};
     color: {fg};
     font-weight: bold;
 }}
 
 .mode-sep {{
-    font: {font};
+    font-family: {font_family};
+    font-size: {font_size};
     color: {fg};
     opacity: 0.5;
 }}
 
 .mode-desc {{
-    font: {font};
+    font-family: {font_family};
+    font-size: {font_size};
     color: {fg};
 }}
 
@@ -109,9 +113,38 @@ pub fn generate_css(config: &UiConfig, hints: &NiriStyleHints) -> String {
     )
 }
 
+/// Parse a Pango-style font string like "Pragmasevka Nerd Font 12" into
+/// (family, size) for GTK CSS. Returns quoted family and size with "pt" unit.
+fn parse_pango_font(pango: &str) -> (String, String) {
+    // Split off the last whitespace-separated token as the size
+    match pango.rsplit_once(' ') {
+        Some((family, size_str)) if size_str.parse::<f64>().is_ok() => {
+            (format!("\"{}\"", family), format!("{}pt", size_str))
+        }
+        _ => {
+            // No numeric suffix -- treat the whole thing as a family name
+            (format!("\"{}\"", pango), "12pt".to_string())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_pango_font_with_size() {
+        let (family, size) = parse_pango_font("Pragmasevka Nerd Font 12");
+        assert_eq!(family, "\"Pragmasevka Nerd Font\"");
+        assert_eq!(size, "12pt");
+    }
+
+    #[test]
+    fn parse_pango_font_without_size() {
+        let (family, size) = parse_pango_font("monospace");
+        assert_eq!(family, "\"monospace\"");
+        assert_eq!(size, "12pt");
+    }
 
     #[test]
     fn generate_css_with_defaults() {
@@ -121,7 +154,8 @@ mod tests {
         assert!(css.contains("background-color: transparent"));
         assert!(css.contains("#2F2A4C"));
         assert!(css.contains("#DFD9FB"));
-        assert!(css.contains("monospace 12"));
+        assert!(css.contains("font-family: \"monospace\""));
+        assert!(css.contains("font-size: 12pt"));
         assert!(css.contains("#8ec07c")); // default accent
     }
 
@@ -136,7 +170,8 @@ mod tests {
         let css = generate_css(&config, &hints);
         assert!(css.contains("#000000"));
         assert!(css.contains("#ffffff"));
-        assert!(css.contains("Mono 14"));
+        assert!(css.contains("font-family: \"Mono\""));
+        assert!(css.contains("font-size: 14pt"));
         assert!(css.contains("8px"));
     }
 
@@ -159,7 +194,8 @@ mod tests {
         config.modes.font = Some("ModeFont 14".to_string());
         let hints = NiriStyleHints::default();
         let css = generate_css(&config, &hints);
-        assert!(css.contains("ModeFont 14"));
-        assert!(!css.contains("Global 10"));
+        assert!(css.contains("font-family: \"ModeFont\""));
+        assert!(css.contains("font-size: 14pt"));
+        assert!(!css.contains("\"Global\""));
     }
 }
