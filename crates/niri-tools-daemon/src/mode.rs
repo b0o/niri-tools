@@ -372,4 +372,28 @@ mod tests {
         assert!(state.lookup_bind("x").is_some());
         assert!(state.lookup_bind("Space").is_none()); // old bind gone
     }
+
+    // ── Breadcrumb tests ────────────────────────────────────────
+
+    #[test]
+    fn breadcrumb_empty_stack() {
+        let state = ModeState::new(make_modes());
+        assert!(state.breadcrumb().is_none());
+    }
+
+    #[test]
+    fn breadcrumb_single_mode() {
+        let mut state = ModeState::new(make_modes());
+        state.push_mode("root");
+        // Single mode = no breadcrumb needed
+        assert!(state.breadcrumb().is_none());
+    }
+
+    #[test]
+    fn breadcrumb_nested_modes() {
+        let mut state = ModeState::new(make_modes());
+        state.push_mode("root");
+        state.push_mode("brightness");
+        assert_eq!(state.breadcrumb().as_deref(), Some("root > brightness"));
+    }
 }

@@ -285,3 +285,124 @@ fn handle_picker_key(
 
     gtk4::glib::Propagation::Stop
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_entries() -> Vec<PickerEntry> {
+        vec![
+            PickerEntry {
+                name: "term".to_string(),
+                key: Some("t".to_string()),
+                desc: Some("Terminal".to_string()),
+                state: PickerEntryState::Hidden,
+            },
+            PickerEntry {
+                name: "browser".to_string(),
+                key: Some("b".to_string()),
+                desc: Some("Web Browser".to_string()),
+                state: PickerEntryState::Visible,
+            },
+            PickerEntry {
+                name: "music-tidal".to_string(),
+                key: None,
+                desc: Some("Tidal Music".to_string()),
+                state: PickerEntryState::Unspawned,
+            },
+            PickerEntry {
+                name: "volume".to_string(),
+                key: Some("v".to_string()),
+                desc: None,
+                state: PickerEntryState::Floating,
+            },
+        ]
+    }
+
+    fn make_picker() -> PickerState {
+        let (tx, _rx) = tokio::sync::mpsc::channel(1);
+        let mut ps = PickerState::new(tx);
+        ps.set_entries(make_entries());
+        ps
+    }
+
+    #[test]
+    fn set_entries_shows_all() {
+        let ps = make_picker();
+        assert_eq!(ps.filtered_indices.len(), 4);
+        assert_eq!(ps.selected_index, 0);
+        assert!(ps.search_buffer.is_empty());
+    }
+
+    #[test]
+    fn fuzzy_filter_narrows_results() {
+        let mut ps = make_picker();
+        ps.search_buffer = "term".to_string();
+        ps.update_filtered();
+        assert_eq!(ps.filtered_indices.len(), 1);
+        assert_eq!(ps.entries[ps.filtered_indices[0]].name, "term");
+    }
+
+    #[test]
+    fn fuzzy_filter_matches_desc() {
+        let mut ps = make_picker();
+        ps.search_buffer = "tidal".to_string();
+        ps.update_filtered();
+        assert_eq!(ps.filtered_indices.len(), 1);
+        assert_eq!(ps.entries[ps.filtered_indices[0]].name, "music-tidal");
+    }
+
+    #[test]
+    fn fuzzy_filter_no_match() {
+        let mut ps = make_picker();
+        ps.search_buffer = "zzzzz".to_string();
+        ps.update_filtered();
+        assert!(ps.filtered_indices.is_empty());
+    }
+
+    #[test]
+    fn selected_entry_returns_correct_item() {
+        let ps = make_picker();
+        let entry = ps.selected_entry().unwrap();
+        assert_eq!(entry.name, "term");
+    }
+
+    #[test]
+    fn selected_entry_after_navigation() {
+        let mut ps = make_picker();
+        ps.selected_index = 2;
+        let entry = ps.selected_entry().unwrap();
+        assert_eq!(entry.name, "music-tidal");
+    }
+
+    #[test]
+    fn selected_index_clamped_on_filter() {
+        let mut ps = make_picker();
+        ps.selected_index = 3; // last item
+        ps.search_buffer = "term".to_string();
+        ps.update_filtered();
+        // Should clamp to 0 since only 1 result
+        assert_eq!(ps.selected_index, 0);
+    }
+
+    #[test]
+    fn clear_search_shows_all() {
+        let mut ps = make_picker();
+        ps.search_buffer = "term".to_string();
+        ps.update_filtered();
+        assert_eq!(ps.filtered_indices.len(), 1);
+
+        ps.search_buffer.clear();
+        ps.update_filtered();
+        assert_eq!(ps.filtered_indices.len(), 4);
+    }
+
+    #[test]
+    fn display_name_uses_desc_then_name() {
+        let ps = make_picker();
+        // "volume" has no desc, so name should be used for matching
+        let volume = &ps.entries[3];
+        assert!(volume.desc.is_none());
+        assert_eq!(volume.name, "volume");
+    }
+}

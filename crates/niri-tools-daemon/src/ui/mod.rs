@@ -407,3 +407,77 @@ fn spawn_niri_action(name: &str, args: &[String]) {
         Err(e) => tracing::error!(%e, name, "failed to execute niri action"),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bind_action_scratchpad_toggle() {
+        let cmd = bind_action_to_command(&BindAction::ScratchpadToggle(Some("term".into())));
+        assert_eq!(
+            cmd,
+            Some(Command::Toggle {
+                name: Some("term".into())
+            })
+        );
+    }
+
+    #[test]
+    fn bind_action_scratchpad_toggle_none() {
+        let cmd = bind_action_to_command(&BindAction::ScratchpadToggle(None));
+        assert_eq!(cmd, Some(Command::Toggle { name: None }));
+    }
+
+    #[test]
+    fn bind_action_scratchpad_hide() {
+        let cmd = bind_action_to_command(&BindAction::ScratchpadHide);
+        assert_eq!(cmd, Some(Command::Hide));
+    }
+
+    #[test]
+    fn bind_action_scratchpad_float() {
+        let cmd = bind_action_to_command(&BindAction::ScratchpadFloat(Some("term".into())));
+        assert_eq!(
+            cmd,
+            Some(Command::Float {
+                name: Some("term".into())
+            })
+        );
+    }
+
+    #[test]
+    fn bind_action_scratchpad_tile() {
+        let cmd = bind_action_to_command(&BindAction::ScratchpadTile(Some("term".into())));
+        assert_eq!(
+            cmd,
+            Some(Command::Tile {
+                name: Some("term".into())
+            })
+        );
+    }
+
+    #[test]
+    fn bind_action_scratchpad_toggle_float() {
+        let cmd = bind_action_to_command(&BindAction::ScratchpadToggleFloat);
+        assert_eq!(cmd, Some(Command::ToggleFloat { name: None }));
+    }
+
+    #[test]
+    fn bind_action_scratchpad_pick() {
+        let cmd = bind_action_to_command(&BindAction::ScratchpadPick);
+        assert_eq!(cmd, Some(Command::ScratchpadPick));
+    }
+
+    #[test]
+    fn bind_action_spawn_sh_returns_none() {
+        let cmd = bind_action_to_command(&BindAction::SpawnSh("echo hi".into()));
+        assert!(cmd.is_none());
+    }
+
+    #[test]
+    fn bind_action_switch_mode_returns_none() {
+        let cmd = bind_action_to_command(&BindAction::SwitchMode("root".into()));
+        assert!(cmd.is_none());
+    }
+}
