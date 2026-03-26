@@ -44,62 +44,34 @@ pub fn generate_css(config: &UiConfig, hints: &NiriStyleHints) -> String {
     // Accent color: modes ui > global ui > niri config > hardcoded default
     let accent = hints.accent_color.as_deref().unwrap_or("#8ec07c");
 
-    let border_width = config
-        .modes
-        .border_width
-        .or(hints.border_width)
-        .unwrap_or(0.0);
-
-    let border_css = if border_width > 0.0 {
-        format!("border: {border_width}px solid {accent};")
-    } else {
-        String::new()
-    };
-
     format!(
-        r#"window {{
-    background-color: transparent;
+        r#"* {{
+    font-family: {font_family};
+    font-size: {font_size};
+    color: {fg};
 }}
 
-/* ── Mode overlay ────────────────────────────────── */
+window {{
+    background-color: transparent;
+}}
 
 .mode-container {{
     background-color: {bg};
     border-radius: {radius}px;
-    {border_css}
-}}
-
-.mode-entry {{
-    padding: 0 4px;
 }}
 
 .mode-key {{
-    font-family: {font_family};
-    font-size: {font_size};
     color: {accent};
-    font-weight: bold;
-    margin-right: 4px;
-}}
-
-.mode-desc {{
-    font-family: {font_family};
-    font-size: {font_size};
-    color: {fg};
 }}
 
 .mode-desc-mode {{
-    font-style: italic;
+    color: {accent};
+    opacity: 0.8;
 }}
 
 .mode-entry-sep {{
-    font-family: {font_family};
-    font-size: {font_size};
-    color: {fg};
     opacity: 0.2;
-    padding: 0 2px;
 }}
-
-/* ── Scratchpad picker ───────────────────────────── */
 
 .state-visible {{
     color: {accent};
@@ -110,7 +82,7 @@ pub fn generate_css(config: &UiConfig, hints: &NiriStyleHints) -> String {
 }}
 
 .state-unspawned {{
-    opacity: 0.5;
+    opacity: 0.4;
 }}
 "#
     )
@@ -186,8 +158,7 @@ mod tests {
             border_width: Some(2.0),
         };
         let css = generate_css(&config, &hints);
-        assert!(css.contains("#ff00ff")); // accent used
-        assert!(css.contains("border: 2px solid #ff00ff")); // border
+        assert!(css.contains("#ff00ff")); // accent used for keys
     }
 
     #[test]
