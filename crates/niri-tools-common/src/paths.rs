@@ -19,6 +19,9 @@ pub fn default_config_path() -> PathBuf {
 }
 
 pub fn state_file_path() -> PathBuf {
+    if let Ok(path) = std::env::var("NIRI_TOOLS_STATE_FILE") {
+        return PathBuf::from(path);
+    }
     let runtime_dir = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".to_string());
     PathBuf::from(runtime_dir).join("niri-tools-state.json")
 }
