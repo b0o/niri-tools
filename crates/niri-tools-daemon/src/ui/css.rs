@@ -70,8 +70,13 @@ pub fn generate_css(config: &UiConfig, hints: &NiriStyleHints) -> String {
     {border_css}
 }}
 
-.mode-column {{
+.mode-flow {{
     padding: 0;
+}}
+
+flowboxchild {{
+    padding: 0;
+    margin: 0;
 }}
 
 .mode-key {{

@@ -72,45 +72,56 @@ pub fn create_mode_overlay(app: &gtk4::Application, ui_config: &UiConfig) -> App
 
 /// Rebuild the overlay widget tree to display binds from the given mode.
 ///
-/// The separator between key and description, and the column padding,
-/// are controlled by `UiConfig`.
+/// Layout: binds flow horizontally (like a status bar) and wrap to the next
+/// row if they exceed the window width. This matches wlr-which-key's
+/// `rows_per_column: 1` behavior.
+///
+/// `column_padding` controls spacing between entries.
+/// `min_width` sets a minimum width for the container.
 pub fn rebuild_mode(window: &ApplicationWindow, mode: &ModeConfig, ui_config: &UiConfig) {
     let separator = ui_config.modes.separator.as_deref().unwrap_or("  ");
-
     let column_padding = ui_config.modes.column_padding.unwrap_or(50.0) as i32;
+    let min_width = ui_config.modes.min_width.unwrap_or(0.0) as i32;
 
-    // Outer container (horizontal box of columns)
-    let container = gtk4::Box::new(gtk4::Orientation::Horizontal, column_padding);
-    container.add_css_class("mode-container");
-
-    // We pack all binds into a single column for now.
-    // Multi-column layout can be added later based on min_width.
-    let column = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
-    column.add_css_class("mode-column");
+    // FlowBox: horizontal flow with automatic wrapping
+    let flow = gtk4::FlowBox::new();
+    flow.set_orientation(gtk4::Orientation::Horizontal);
+    flow.set_selection_mode(gtk4::SelectionMode::None);
+    flow.set_homogeneous(false);
+    flow.set_column_spacing(column_padding as u32);
+    flow.set_row_spacing(0);
+    flow.set_min_children_per_line(1);
+    flow.set_max_children_per_line(mode.binds.len().max(1) as u32);
+    flow.add_css_class("mode-flow");
 
     for bind in &mode.binds {
-        let row = gtk4::Box::new(gtk4::Orientation::Horizontal, 4);
+        let entry = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
 
         let key_label = Label::new(Some(&bind.key));
         key_label.add_css_class("mode-key");
-        row.append(&key_label);
+        entry.append(&key_label);
 
         let sep_label = Label::new(Some(separator));
         sep_label.add_css_class("mode-sep");
-        row.append(&sep_label);
+        entry.append(&sep_label);
 
         let desc_label = Label::new(Some(&bind.description));
         desc_label.add_css_class("mode-desc");
-        // Accent color for switch-mode entries
         if matches!(&bind.action, BindAction::SwitchMode(_)) {
             desc_label.add_css_class("mode-desc-mode");
         }
-        row.append(&desc_label);
+        entry.append(&desc_label);
 
-        column.append(&row);
+        flow.insert(&entry, -1);
     }
 
-    container.append(&column);
+    // Outer container with background styling and min-width
+    let container = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+    container.add_css_class("mode-container");
+    if min_width > 0 {
+        container.set_size_request(min_width, -1);
+    }
+    container.append(&flow);
 
     // Reset the window's default size so GTK re-measures from the new content
     // rather than trying to fit it into the old allocation.
