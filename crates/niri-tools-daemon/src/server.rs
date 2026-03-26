@@ -504,10 +504,19 @@ impl DaemonServer {
     }
 
     /// Resolve a mode name to its config. If `name` is None, uses the first defined mode.
+    /// Resolve a mode name to its config.
+    ///
+    /// If `name` is `None`, returns the mode named `"root"` if it exists,
+    /// otherwise the alphabetically first mode.
     fn resolve_mode_config(&self, name: Option<&str>) -> Option<niri_tools_common::config::ModeConfig> {
         match name {
             Some(n) => self.state.mode_configs.get(n).cloned(),
-            None => self.state.mode_configs.values().next().cloned(),
+            None => self
+                .state
+                .mode_configs
+                .get("root")
+                .or_else(|| self.state.mode_configs.keys().min().and_then(|k| self.state.mode_configs.get(k)))
+                .cloned(),
         }
     }
 
