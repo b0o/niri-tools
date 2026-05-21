@@ -43,6 +43,13 @@ pub fn calculate_expected_window_size(
     // Check for output-specific overrides first
     let (size_config, _pos_config) = resolve_output_overrides(config, &output.name);
 
+    calculate_window_size(size_config, output)
+}
+
+fn calculate_window_size(
+    size_config: Option<&niri_tools_common::config::SizeConfig>,
+    output: &OutputInfo,
+) -> (u32, u32) {
     let size = match size_config {
         Some(s) => s,
         None => return (output.width, output.height), // no size config = full output
@@ -262,7 +269,10 @@ impl<'a> ScratchpadManager<'a> {
         }
 
         // Otherwise: show the most recently hidden scratchpad
-        let most_recent = self.state.get_most_recent_hidden_scratchpad().map(String::from);
+        let most_recent = self
+            .state
+            .get_most_recent_hidden_scratchpad()
+            .map(String::from);
         if let Some(name) = most_recent {
             let sp = self.state.scratchpads.get(&name);
             let wid = sp.and_then(|s| s.window_id);
@@ -304,10 +314,7 @@ impl<'a> ScratchpadManager<'a> {
     }
 
     /// Toggle float/tile for a scratchpad.
-    pub async fn toggle_float(
-        &mut self,
-        name: Option<&str>,
-    ) -> niri_tools_common::Result<()> {
+    pub async fn toggle_float(&mut self, name: Option<&str>) -> niri_tools_common::Result<()> {
         let (resolved_name, wid, config) = self.resolve_scratchpad(name)?;
 
         let window = self.state.windows.get(&wid).cloned();
@@ -331,10 +338,7 @@ impl<'a> ScratchpadManager<'a> {
     }
 
     /// Make a scratchpad floating (no-op if already floating).
-    pub async fn float_scratchpad(
-        &mut self,
-        name: Option<&str>,
-    ) -> niri_tools_common::Result<()> {
+    pub async fn float_scratchpad(&mut self, name: Option<&str>) -> niri_tools_common::Result<()> {
         let (resolved_name, wid, config) = self.resolve_scratchpad(name)?;
 
         let window = self.state.windows.get(&wid).cloned();
@@ -355,10 +359,7 @@ impl<'a> ScratchpadManager<'a> {
     }
 
     /// Make a scratchpad tiled (no-op if already tiled).
-    pub async fn tile_scratchpad(
-        &mut self,
-        name: Option<&str>,
-    ) -> niri_tools_common::Result<()> {
+    pub async fn tile_scratchpad(&mut self, name: Option<&str>) -> niri_tools_common::Result<()> {
         let (_resolved_name, wid, _config) = self.resolve_scratchpad(name)?;
 
         let window = self.state.windows.get(&wid).cloned();
@@ -389,9 +390,9 @@ impl<'a> ScratchpadManager<'a> {
 
         // Check the window exists
         if !self.state.windows.contains_key(&window_id) {
-            return Err(niri_tools_common::NiriToolsError::Other(
-                format!("Window {window_id} not found"),
-            ));
+            return Err(niri_tools_common::NiriToolsError::Other(format!(
+                "Window {window_id} not found"
+            )));
         }
 
         // Check if target is a scratchpad
@@ -450,12 +451,10 @@ impl<'a> ScratchpadManager<'a> {
         // If no pending spawn match, check auto-adopt configs
         let (name, from_pending) = match matching_name {
             Some(n) => (n, true),
-            None => {
-                match self.find_auto_adopt(window) {
-                    Some(n) => (n, false),
-                    None => return Ok(()),
-                }
-            }
+            None => match self.find_auto_adopt(window) {
+                Some(n) => (n, false),
+                None => return Ok(()),
+            },
         };
 
         let config = match self.state.scratchpad_configs.get(&name).cloned() {
@@ -495,9 +494,7 @@ impl<'a> ScratchpadManager<'a> {
             .scratchpad_configs
             .iter()
             .find(|(name, cfg)| {
-                cfg.auto_adopt
-                    && matches_config(window, cfg)
-                    && !self.scratchpad_has_window(name)
+                cfg.auto_adopt && matches_config(window, cfg) && !self.scratchpad_has_window(name)
             })
             .map(|(name, _)| name.clone())
     }
@@ -605,11 +602,11 @@ impl<'a> ScratchpadManager<'a> {
         // Position window
         if let Some(pos) = pos_cfg {
             if let Some(out) = &output {
-                // Calculate expected window size for positioning
-                let (win_w, win_h) = calculate_expected_window_size(config, out);
-                let (x, y) = convert_position_to_pixels(
-                    &pos.x, &pos.y, out.width, out.height, win_w, win_h,
-                );
+                // Use the same resolved size config that was applied above so
+                // per-output sizing and positioning cannot diverge.
+                let (win_w, win_h) = calculate_window_size(size_cfg, out);
+                let (x, y) =
+                    convert_position_to_pixels(&pos.x, &pos.y, out.width, out.height, win_w, win_h);
                 let x_str = x.to_string();
                 let y_str = y.to_string();
                 self.niri
@@ -624,10 +621,7 @@ impl<'a> ScratchpadManager<'a> {
         Ok(())
     }
 
-    async fn focus_window(
-        &mut self,
-        window_id: u64,
-    ) -> niri_tools_common::Result<()> {
+    async fn focus_window(&mut self, window_id: u64) -> niri_tools_common::Result<()> {
         let id_str = window_id.to_string();
         self.niri
             .run_action("focus-window", &["--id", &id_str])
@@ -655,7 +649,13 @@ impl<'a> ScratchpadManager<'a> {
         self.niri
             .run_action(
                 "move-window-to-workspace",
-                &["--window-id", &id_str, "--focus", "false", SCRATCHPAD_WORKSPACE],
+                &[
+                    "--window-id",
+                    &id_str,
+                    "--focus",
+                    "false",
+                    SCRATCHPAD_WORKSPACE,
+                ],
             )
             .await?;
         Ok(())
@@ -676,13 +676,11 @@ impl<'a> ScratchpadManager<'a> {
         if let Some(name) = name {
             // By name
             let sp = self.state.scratchpads.get(name);
-            let wid = sp
-                .and_then(|s| s.window_id)
-                .ok_or_else(|| {
-                    niri_tools_common::NiriToolsError::Other(format!(
-                        "Scratchpad '{name}' has no active window. Use 'toggle {name}' to spawn it."
-                    ))
-                })?;
+            let wid = sp.and_then(|s| s.window_id).ok_or_else(|| {
+                niri_tools_common::NiriToolsError::Other(format!(
+                    "Scratchpad '{name}' has no active window. Use 'toggle {name}' to spawn it."
+                ))
+            })?;
             let config = self
                 .state
                 .scratchpad_configs
@@ -813,8 +811,9 @@ mod tests {
 
         async fn subscribe_events(
             &self,
-        ) -> niri_tools_common::Result<Pin<Box<dyn Stream<Item = niri_tools_common::Result<NiriEvent>> + Send>>>
-        {
+        ) -> niri_tools_common::Result<
+            Pin<Box<dyn Stream<Item = niri_tools_common::Result<NiriEvent>> + Send>>,
+        > {
             unimplemented!("not needed for unit tests")
         }
     }
@@ -842,7 +841,13 @@ mod tests {
         }
     }
 
-    fn make_window(id: u64, app_id: &str, is_focused: bool, is_floating: bool, workspace_id: Option<u64>) -> WindowInfo {
+    fn make_window(
+        id: u64,
+        app_id: &str,
+        is_focused: bool,
+        is_floating: bool,
+        workspace_id: Option<u64>,
+    ) -> WindowInfo {
         WindowInfo {
             id,
             app_id: app_id.to_string(),
@@ -869,15 +874,23 @@ mod tests {
         let mut state = DaemonState::default();
 
         // Active workspace on eDP-1
-        state.workspaces.insert(1, make_workspace(1, "eDP-1", true, Some("main")));
+        state
+            .workspaces
+            .insert(1, make_workspace(1, "eDP-1", true, Some("main")));
         // Scratchpad workspace
-        state.workspaces.insert(2, make_workspace(2, "eDP-1", false, Some(SCRATCHPAD_WORKSPACE)));
+        state.workspaces.insert(
+            2,
+            make_workspace(2, "eDP-1", false, Some(SCRATCHPAD_WORKSPACE)),
+        );
 
-        state.outputs.insert("eDP-1".to_string(), OutputInfo {
-            name: "eDP-1".to_string(),
-            width: 1920,
-            height: 1080,
-        });
+        state.outputs.insert(
+            "eDP-1".to_string(),
+            OutputInfo {
+                name: "eDP-1".to_string(),
+                width: 1920,
+                height: 1080,
+            },
+        );
 
         state.focused_output = Some("eDP-1".to_string());
 
@@ -886,7 +899,9 @@ mod tests {
 
     fn setup_state_with_config(name: &str) -> DaemonState {
         let mut state = setup_state();
-        state.scratchpad_configs.insert(name.to_string(), make_config(name));
+        state
+            .scratchpad_configs
+            .insert(name.to_string(), make_config(name));
         state
     }
 
@@ -1205,8 +1220,7 @@ mod tests {
         let actions = niri.get_actions();
         // Should have move-window-to-workspace action
         assert!(actions.iter().any(|(action, args)| {
-            action == "move-window-to-workspace"
-                && args.contains(&SCRATCHPAD_WORKSPACE.to_string())
+            action == "move-window-to-workspace" && args.contains(&SCRATCHPAD_WORKSPACE.to_string())
         }));
         assert!(!state.scratchpads.get("term").unwrap().visible);
     }
@@ -1244,7 +1258,9 @@ mod tests {
         let mut state = setup_state_with_config("term");
 
         // Add a second workspace on another output
-        state.workspaces.insert(3, make_workspace(3, "HDMI-A-1", true, Some("other")));
+        state
+            .workspaces
+            .insert(3, make_workspace(3, "HDMI-A-1", true, Some("other")));
 
         // Window on workspace 3 (different from focused workspace 1), floating
         let window = make_window(42, "ghostty", false, true, Some(3));
@@ -1260,8 +1276,16 @@ mod tests {
 
         let actions = niri.get_actions();
         // Should configure (float, set size, set height) + move to monitor + focus
-        assert!(actions.iter().any(|(action, _)| action == "move-window-to-floating"));
-        assert!(actions.iter().any(|(action, _)| action == "move-window-to-monitor"));
+        assert!(
+            actions
+                .iter()
+                .any(|(action, _)| action == "move-window-to-floating")
+        );
+        assert!(
+            actions
+                .iter()
+                .any(|(action, _)| action == "move-window-to-monitor")
+        );
         assert!(actions.iter().any(|(action, args)| {
             action == "focus-window" && args.contains(&"42".to_string())
         }));
@@ -1309,8 +1333,16 @@ mod tests {
 
         let actions = niri.get_actions();
         // Should show: configure + move to monitor + focus
-        assert!(actions.iter().any(|(action, _)| action == "move-window-to-floating"));
-        assert!(actions.iter().any(|(action, _)| action == "move-window-to-monitor"));
+        assert!(
+            actions
+                .iter()
+                .any(|(action, _)| action == "move-window-to-floating")
+        );
+        assert!(
+            actions
+                .iter()
+                .any(|(action, _)| action == "move-window-to-monitor")
+        );
         assert!(actions.iter().any(|(action, args)| {
             action == "focus-window" && args.contains(&"42".to_string())
         }));
@@ -1321,7 +1353,9 @@ mod tests {
         let mut state = setup_state_with_config("term");
 
         // Add a third workspace (not scratchpad)
-        state.workspaces.insert(3, make_workspace(3, "eDP-1", false, Some("code")));
+        state
+            .workspaces
+            .insert(3, make_workspace(3, "eDP-1", false, Some("code")));
 
         // Window on workspace 3, tiled, not scratchpad workspace
         let window = make_window(42, "ghostty", false, false, Some(3));
@@ -1363,8 +1397,7 @@ mod tests {
 
         let actions = niri.get_actions();
         assert!(actions.iter().any(|(action, args)| {
-            action == "move-window-to-workspace"
-                && args.contains(&SCRATCHPAD_WORKSPACE.to_string())
+            action == "move-window-to-workspace" && args.contains(&SCRATCHPAD_WORKSPACE.to_string())
         }));
         assert!(!state.scratchpads.get("term").unwrap().visible);
     }
@@ -1393,8 +1426,16 @@ mod tests {
 
         let actions = niri.get_actions();
         // Should show the hidden scratchpad
-        assert!(actions.iter().any(|(action, _)| action == "move-window-to-floating"));
-        assert!(actions.iter().any(|(action, _)| action == "move-window-to-monitor"));
+        assert!(
+            actions
+                .iter()
+                .any(|(action, _)| action == "move-window-to-floating")
+        );
+        assert!(
+            actions
+                .iter()
+                .any(|(action, _)| action == "move-window-to-monitor")
+        );
         assert!(actions.iter().any(|(action, args)| {
             action == "focus-window" && args.contains(&"42".to_string())
         }));
@@ -1422,8 +1463,7 @@ mod tests {
 
         let actions = niri.get_actions();
         assert!(actions.iter().any(|(action, args)| {
-            action == "move-window-to-workspace"
-                && args.contains(&SCRATCHPAD_WORKSPACE.to_string())
+            action == "move-window-to-workspace" && args.contains(&SCRATCHPAD_WORKSPACE.to_string())
         }));
         assert!(!state.scratchpads.get("term").unwrap().visible);
     }
@@ -1446,8 +1486,7 @@ mod tests {
 
         let actions = niri.get_actions();
         assert!(actions.iter().any(|(action, args)| {
-            action == "move-window-to-workspace"
-                && args.contains(&SCRATCHPAD_WORKSPACE.to_string())
+            action == "move-window-to-workspace" && args.contains(&SCRATCHPAD_WORKSPACE.to_string())
         }));
     }
 
@@ -1513,9 +1552,67 @@ mod tests {
 
         let actions = niri.get_actions();
         // Should configure: float + set size + set height + position
-        assert!(actions.iter().any(|(action, _)| action == "move-window-to-floating"));
-        assert!(actions.iter().any(|(action, _)| action == "set-window-width"));
-        assert!(actions.iter().any(|(action, _)| action == "set-window-height"));
+        assert!(
+            actions
+                .iter()
+                .any(|(action, _)| action == "move-window-to-floating")
+        );
+        assert!(
+            actions
+                .iter()
+                .any(|(action, _)| action == "set-window-width")
+        );
+        assert!(
+            actions
+                .iter()
+                .any(|(action, _)| action == "set-window-height")
+        );
+    }
+
+    #[tokio::test]
+    async fn configure_window_positions_using_resolved_output_override_size() {
+        let mut state = setup_state_with_config("term");
+        let config = state.scratchpad_configs.get_mut("term").unwrap();
+        config.output_overrides.insert(
+            "eDP-1".to_string(),
+            OutputOverride {
+                size: Some(SizeConfig {
+                    width: "70%".to_string(),
+                    height: "70%".to_string(),
+                }),
+                position: None,
+            },
+        );
+
+        // Positioning should use the override selected by focused_output, not
+        // re-resolve from OutputInfo.name and accidentally fall back to 60%.
+        state.outputs.insert(
+            "eDP-1".to_string(),
+            OutputInfo {
+                name: "different-from-map-key".to_string(),
+                width: 1920,
+                height: 1080,
+            },
+        );
+
+        let config = state.scratchpad_configs.get("term").unwrap().clone();
+        let niri = MockNiriClient::new();
+
+        {
+            let mut mgr = ScratchpadManager::new(&mut state, &niri);
+            mgr.configure_window(42, &config).await.unwrap();
+        }
+
+        let actions = niri.get_actions();
+        let move_action = actions
+            .iter()
+            .find(|(action, _)| action == "move-floating-window")
+            .unwrap();
+
+        assert_eq!(
+            move_action.1,
+            vec!["--id", "42", "--x", "288", "--y", "162"]
+        );
     }
 
     // -- handle_window_opened tests --
@@ -1541,7 +1638,11 @@ mod tests {
 
         let actions = niri.get_actions();
         // Should configure: float + set size + set height + position + focus
-        assert!(actions.iter().any(|(action, _)| action == "move-window-to-floating"));
+        assert!(
+            actions
+                .iter()
+                .any(|(action, _)| action == "move-window-to-floating")
+        );
         assert!(actions.iter().any(|(action, args)| {
             action == "focus-window" && args.contains(&"42".to_string())
         }));
@@ -1620,9 +1721,11 @@ mod tests {
         let actions = niri.get_actions();
         assert!(actions.iter().any(|(a, _)| a == "move-window-to-floating"));
         assert!(actions.iter().any(|(a, _)| a == "move-window-to-monitor"));
-        assert!(actions.iter().any(|(a, args)| {
-            a == "focus-window" && args.contains(&"42".to_string())
-        }));
+        assert!(
+            actions
+                .iter()
+                .any(|(a, args)| { a == "focus-window" && args.contains(&"42".to_string()) })
+        );
         assert!(state.scratchpads.get("term").unwrap().visible);
     }
 
@@ -1659,7 +1762,9 @@ mod tests {
         // Target regular window on a different workspace
         let target = make_window(42, "firefox", false, false, Some(3));
         state.windows.insert(42, target);
-        state.workspaces.insert(3, make_workspace(3, "eDP-1", false, Some("other")));
+        state
+            .workspaces
+            .insert(3, make_workspace(3, "eDP-1", false, Some("other")));
 
         let niri = MockNiriClient::new();
         {
@@ -1670,13 +1775,14 @@ mod tests {
         let actions = niri.get_actions();
         // Should hide the scratchpad first
         assert!(actions.iter().any(|(a, args)| {
-            a == "move-window-to-workspace"
-                && args.contains(&SCRATCHPAD_WORKSPACE.to_string())
+            a == "move-window-to-workspace" && args.contains(&SCRATCHPAD_WORKSPACE.to_string())
         }));
         // Then focus the target
-        assert!(actions.iter().any(|(a, args)| {
-            a == "focus-window" && args.contains(&"42".to_string())
-        }));
+        assert!(
+            actions
+                .iter()
+                .any(|(a, args)| { a == "focus-window" && args.contains(&"42".to_string()) })
+        );
         assert!(!state.scratchpads.get("term").unwrap().visible);
     }
 
@@ -1727,7 +1833,11 @@ mod tests {
 
         let actions = niri.get_actions();
         // Should configure: float + set size + set height + position + focus
-        assert!(actions.iter().any(|(action, _)| action == "move-window-to-floating"));
+        assert!(
+            actions
+                .iter()
+                .any(|(action, _)| action == "move-window-to-floating")
+        );
         assert!(actions.iter().any(|(action, args)| {
             action == "focus-window" && args.contains(&"42".to_string())
         }));
@@ -1770,7 +1880,9 @@ mod tests {
     async fn handle_window_opened_auto_adopt_false_does_not_adopt() {
         let mut state = setup_state();
         // auto_adopt is false (default make_config)
-        state.scratchpad_configs.insert("term".to_string(), make_config("term"));
+        state
+            .scratchpad_configs
+            .insert("term".to_string(), make_config("term"));
 
         let window = make_window(42, "ghostty", false, false, Some(1));
         state.windows.insert(42, window.clone());
