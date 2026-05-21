@@ -34,20 +34,20 @@ impl NiriClient for RealNiriClient {
 
     async fn get_windows(&self) -> niri_tools_common::Result<Vec<WindowInfo>> {
         let output = run_niri_msg(&["windows"]).await?;
-        let json: serde_json::Value =
-            serde_json::from_str(&output).map_err(|e| NiriToolsError::Serialization(e.to_string()))?;
+        let json: serde_json::Value = serde_json::from_str(&output)
+            .map_err(|e| NiriToolsError::Serialization(e.to_string()))?;
 
-        let arr = json
-            .as_array()
-            .ok_or_else(|| NiriToolsError::NiriCommand("expected array from niri msg windows".into()))?;
+        let arr = json.as_array().ok_or_else(|| {
+            NiriToolsError::NiriCommand("expected array from niri msg windows".into())
+        })?;
 
         Ok(arr.iter().filter_map(parse_window_info).collect())
     }
 
     async fn get_workspaces(&self) -> niri_tools_common::Result<Vec<WorkspaceInfo>> {
         let output = run_niri_msg(&["workspaces"]).await?;
-        let json: serde_json::Value =
-            serde_json::from_str(&output).map_err(|e| NiriToolsError::Serialization(e.to_string()))?;
+        let json: serde_json::Value = serde_json::from_str(&output)
+            .map_err(|e| NiriToolsError::Serialization(e.to_string()))?;
 
         let arr = json.as_array().ok_or_else(|| {
             NiriToolsError::NiriCommand("expected array from niri msg workspaces".into())
@@ -58,8 +58,8 @@ impl NiriClient for RealNiriClient {
 
     async fn get_outputs(&self) -> niri_tools_common::Result<HashMap<String, OutputInfo>> {
         let output = run_niri_msg(&["outputs"]).await?;
-        let json: serde_json::Value =
-            serde_json::from_str(&output).map_err(|e| NiriToolsError::Serialization(e.to_string()))?;
+        let json: serde_json::Value = serde_json::from_str(&output)
+            .map_err(|e| NiriToolsError::Serialization(e.to_string()))?;
 
         let map = json.as_object().ok_or_else(|| {
             NiriToolsError::NiriCommand("expected object from niri msg outputs".into())
@@ -74,8 +74,8 @@ impl NiriClient for RealNiriClient {
 
     async fn get_focused_output(&self) -> niri_tools_common::Result<String> {
         let output = run_niri_msg(&["focused-output"]).await?;
-        let json: serde_json::Value =
-            serde_json::from_str(&output).map_err(|e| NiriToolsError::Serialization(e.to_string()))?;
+        let json: serde_json::Value = serde_json::from_str(&output)
+            .map_err(|e| NiriToolsError::Serialization(e.to_string()))?;
 
         json.get("name")
             .and_then(|v| v.as_str())
@@ -112,9 +112,8 @@ impl NiriClient for RealNiriClient {
         // When the stream is dropped, `child` is dropped too (firing kill_on_drop).
         // Without this, `child` would be dropped at the end of this function,
         // immediately killing the niri process and causing an EOF → reconnect loop.
-        let stream = futures_util::stream::unfold(
-            (child, lines),
-            |(child, mut lines)| async move {
+        let stream =
+            futures_util::stream::unfold((child, lines), |(child, mut lines)| async move {
                 loop {
                     match lines.next_line().await {
                         Ok(Some(line)) => {
@@ -143,8 +142,7 @@ impl NiriClient for RealNiriClient {
                         }
                     }
                 }
-            },
-        );
+            });
 
         Ok(Box::pin(stream))
     }
@@ -163,7 +161,8 @@ async fn run_niri_msg(args: &[&str]) -> niri_tools_common::Result<String> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(NiriToolsError::NiriCommand(format!(
-            "niri msg {} failed: {stderr}", args.join(" ")
+            "niri msg {} failed: {stderr}",
+            args.join(" ")
         )));
     }
 

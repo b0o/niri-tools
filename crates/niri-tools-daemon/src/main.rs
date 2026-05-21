@@ -45,9 +45,7 @@ fn main() {
         std::mem::forget(app.hold());
 
         // Load config for initial UI setup.
-        let ui_config = load_config(None)
-            .map(|c| c.ui_config)
-            .unwrap_or_default();
+        let ui_config = load_config(None).map(|c| c.ui_config).unwrap_or_default();
 
         // Create channels:
         // ui_tx/ui_rx: tokio → GTK (UI commands like ModeShow)

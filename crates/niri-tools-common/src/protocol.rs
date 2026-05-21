@@ -1,6 +1,6 @@
 use std::io::{Read, Write};
 
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::error::{NiriToolsError, Result};
 

@@ -1179,10 +1179,12 @@ mode "brightness" {
         assert_eq!(bright.binds[0].key, "j");
         assert!(bright.binds[0].options.contains(&BindOption::KeepOpen));
         assert_eq!(bright.binds[2].key, "?");
-        assert!(bright.binds[2]
-            .options
-            .iter()
-            .any(|o| matches!(o, BindOption::Alias(s) if s == "q")));
+        assert!(
+            bright.binds[2]
+                .options
+                .iter()
+                .any(|o| matches!(o, BindOption::Alias(s) if s == "q"))
+        );
     }
 
     #[test]
@@ -1308,10 +1310,11 @@ mode "root" {
 "#,
         )
         .unwrap();
-        assert!(cfg
-            .warnings
-            .iter()
-            .any(|w| w.contains("nonexistent") && w.contains("undefined mode")));
+        assert!(
+            cfg.warnings
+                .iter()
+                .any(|w| w.contains("nonexistent") && w.contains("undefined mode"))
+        );
     }
 
     #[test]
@@ -1327,10 +1330,11 @@ mode "root" {
 "#,
         )
         .unwrap();
-        assert!(cfg
-            .warnings
-            .iter()
-            .any(|w| w.contains("duplicate key") && w.contains("\"a\"")));
+        assert!(
+            cfg.warnings
+                .iter()
+                .any(|w| w.contains("duplicate key") && w.contains("\"a\""))
+        );
     }
 
     #[test]
@@ -1348,10 +1352,11 @@ scratchpad "todo" {
 "#,
         )
         .unwrap();
-        assert!(cfg
-            .warnings
-            .iter()
-            .any(|w| w.contains("key \"t\" conflict")));
+        assert!(
+            cfg.warnings
+                .iter()
+                .any(|w| w.contains("key \"t\" conflict"))
+        );
     }
 
     #[test]
@@ -1422,10 +1427,11 @@ mode "empty" {
         assert!(mode.keep_open);
         assert!(mode.binds.is_empty());
         // Should warn about missing binds block
-        assert!(cfg
-            .warnings
-            .iter()
-            .any(|w| w.contains("empty") && w.contains("no binds")));
+        assert!(
+            cfg.warnings
+                .iter()
+                .any(|w| w.contains("empty") && w.contains("no binds"))
+        );
     }
 
     #[test]

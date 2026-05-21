@@ -6,7 +6,7 @@ use niri_tools_common::paths::socket_path;
 use niri_tools_common::protocol::{Command, Response};
 use niri_tools_common::traits::{NiriClient, Notifier};
 
-use crate::events::{apply_event, EventAction};
+use crate::events::{EventAction, apply_event};
 use crate::scratchpad::ScratchpadManager;
 use crate::state::DaemonState;
 use crate::ui::UiCommand;
@@ -41,10 +41,7 @@ impl DaemonServer {
 
     /// Create a server without a UI channel (for tests that don't need GTK).
     #[cfg(test)]
-    pub fn new_without_ui(
-        niri: Box<dyn NiriClient>,
-        notifier: Box<dyn Notifier>,
-    ) -> Self {
+    pub fn new_without_ui(niri: Box<dyn NiriClient>, notifier: Box<dyn Notifier>) -> Self {
         Self {
             state: DaemonState::default(),
             niri,
@@ -56,10 +53,7 @@ impl DaemonServer {
     }
 
     /// Start the daemon with a reverse command channel from the GTK thread.
-    pub async fn start_with_daemon_rx(
-        &mut self,
-        daemon_rx: tokio::sync::mpsc::Receiver<Command>,
-    ) {
+    pub async fn start_with_daemon_rx(&mut self, daemon_rx: tokio::sync::mpsc::Receiver<Command>) {
         self.daemon_rx = Some(daemon_rx);
         if let Err(e) = self.start().await {
             tracing::error!(%e, "daemon server error");
@@ -142,7 +136,7 @@ impl DaemonServer {
         use futures_core::Stream;
         use futures_util::StreamExt;
         use std::pin::Pin;
-        use tokio::signal::unix::{signal, SignalKind};
+        use tokio::signal::unix::{SignalKind, signal};
 
         let mut sigterm = signal(SignalKind::terminate())?;
         let mut sigint = signal(SignalKind::interrupt())?;
@@ -150,7 +144,13 @@ impl DaemonServer {
         // Subscribe to niri events
         tracing::info!("subscribing to niri event stream");
         let mut event_stream: Option<
-            Pin<Box<dyn Stream<Item = niri_tools_common::Result<niri_tools_common::types::NiriEvent>> + Send>>,
+            Pin<
+                Box<
+                    dyn Stream<
+                            Item = niri_tools_common::Result<niri_tools_common::types::NiriEvent>,
+                        > + Send,
+                >,
+            >,
         > = match self.niri.subscribe_events().await {
             Ok(stream) => {
                 tracing::info!("event stream connected");
@@ -418,22 +418,18 @@ impl DaemonServer {
                 let _ = self.state.save_scratchpad_state();
             }
 
-            EventAction::ReloadWorkspaces => {
-                match self.niri.get_workspaces().await {
-                    Ok(workspaces) => {
-                        self.state.workspaces.clear();
-                        for ws in workspaces {
-                            self.state.workspaces.insert(ws.id, ws);
-                        }
-                    }
-                    Err(e) => {
-                        self.notifier.notify_warning(
-                            "Workspaces",
-                            &format!("Failed to reload: {e}"),
-                        );
+            EventAction::ReloadWorkspaces => match self.niri.get_workspaces().await {
+                Ok(workspaces) => {
+                    self.state.workspaces.clear();
+                    for ws in workspaces {
+                        self.state.workspaces.insert(ws.id, ws);
                     }
                 }
-            }
+                Err(e) => {
+                    self.notifier
+                        .notify_warning("Workspaces", &format!("Failed to reload: {e}"));
+                }
+            },
         }
     }
 
@@ -447,7 +443,8 @@ impl DaemonServer {
             Err(e) => {
                 tracing::error!(%e, "config error");
                 if is_reload {
-                    self.notifier.notify_error("Config", &format!("Config error: {e}"));
+                    self.notifier
+                        .notify_error("Config", &format!("Config error: {e}"));
                 }
                 return;
             }
@@ -471,7 +468,8 @@ impl DaemonServer {
         self.state.watch_config = loaded.settings.watch_config;
 
         if is_reload {
-            self.notifier.notify_info("Config", "Configuration reloaded");
+            self.notifier
+                .notify_info("Config", "Configuration reloaded");
         }
     }
 
@@ -479,7 +477,8 @@ impl DaemonServer {
     fn build_picker_entries(&self) -> Vec<crate::ui::PickerEntry> {
         use crate::ui::{PickerEntry, PickerEntryState};
 
-        let mut entries: Vec<_> = self.state
+        let mut entries: Vec<_> = self
+            .state
             .scratchpad_configs
             .values()
             .map(|config| {
@@ -490,10 +489,7 @@ impl DaemonServer {
                 // Check if the window is floating
                 let is_floating = if let Some(sp) = sp_state {
                     if let Some(wid) = sp.window_id {
-                        self.state
-                            .windows
-                            .get(&wid)
-                            .is_some_and(|w| w.is_floating)
+                        self.state.windows.get(&wid).is_some_and(|w| w.is_floating)
                     } else {
                         false
                     }
@@ -540,14 +536,23 @@ impl DaemonServer {
     ///
     /// If `name` is `None`, returns the mode named `"root"` if it exists,
     /// otherwise the alphabetically first mode.
-    fn resolve_mode_config(&self, name: Option<&str>) -> Option<niri_tools_common::config::ModeConfig> {
+    fn resolve_mode_config(
+        &self,
+        name: Option<&str>,
+    ) -> Option<niri_tools_common::config::ModeConfig> {
         match name {
             Some(n) => self.state.mode_configs.get(n).cloned(),
             None => self
                 .state
                 .mode_configs
                 .get("root")
-                .or_else(|| self.state.mode_configs.keys().min().and_then(|k| self.state.mode_configs.get(k)))
+                .or_else(|| {
+                    self.state
+                        .mode_configs
+                        .keys()
+                        .min()
+                        .and_then(|k| self.state.mode_configs.get(k))
+                })
                 .cloned(),
         }
     }
@@ -568,9 +573,7 @@ impl DaemonServer {
 
         // Get parent PID and cmdline via /proc
         let ppid = get_ppid(pid);
-        let parent_cmdline = ppid
-            .map(get_process_cmdline)
-            .unwrap_or_default();
+        let parent_cmdline = ppid.map(get_process_cmdline).unwrap_or_default();
 
         Response::Status {
             pid,
@@ -713,10 +716,11 @@ mod tests {
 
     impl Notifier for MockNotifier {
         fn notify_error(&self, title: &str, message: &str) {
-            self.messages
-                .lock()
-                .unwrap()
-                .push(("error".to_string(), title.to_string(), message.to_string()));
+            self.messages.lock().unwrap().push((
+                "error".to_string(),
+                title.to_string(),
+                message.to_string(),
+            ));
         }
 
         fn notify_warning(&self, title: &str, message: &str) {
@@ -728,10 +732,11 @@ mod tests {
         }
 
         fn notify_info(&self, title: &str, message: &str) {
-            self.messages
-                .lock()
-                .unwrap()
-                .push(("info".to_string(), title.to_string(), message.to_string()));
+            self.messages.lock().unwrap().push((
+                "info".to_string(),
+                title.to_string(),
+                message.to_string(),
+            ));
         }
     }
 
