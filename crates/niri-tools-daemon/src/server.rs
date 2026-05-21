@@ -1,3 +1,7 @@
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
+
+use notify::Watcher;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixListener;
 
@@ -20,6 +24,8 @@ pub struct DaemonServer {
     notifier: Box<dyn Notifier>,
     ui_tx: Option<tokio::sync::mpsc::Sender<UiCommand>>,
     daemon_rx: Option<tokio::sync::mpsc::Receiver<Command>>,
+    config_watcher: Option<notify::RecommendedWatcher>,
+    config_rx: Option<tokio::sync::mpsc::Receiver<notify::Result<notify::Event>>>,
     running: bool,
 }
 
@@ -35,6 +41,8 @@ impl DaemonServer {
             notifier,
             ui_tx: Some(ui_tx),
             daemon_rx: None,
+            config_watcher: None,
+            config_rx: None,
             running: false,
         }
     }
@@ -48,6 +56,8 @@ impl DaemonServer {
             notifier,
             ui_tx: None,
             daemon_rx: None,
+            config_watcher: None,
+            config_rx: None,
             running: false,
         }
     }
@@ -230,6 +240,19 @@ impl DaemonServer {
                     if let Some(command) = cmd {
                         tracing::debug!(?command, "daemon command from GTK thread");
                         let _ = self.dispatch_command(command).await;
+                    }
+                }
+
+                // Config file changes
+                event = async {
+                    if let Some(ref mut rx) = self.config_rx {
+                        rx.recv().await
+                    } else {
+                        std::future::pending::<Option<notify::Result<notify::Event>>>().await
+                    }
+                } => {
+                    if let Some(event) = event {
+                        self.handle_config_watch_event(event);
                     }
                 }
 
@@ -467,9 +490,99 @@ impl DaemonServer {
         self.state.config_files = loaded.config_files.into_iter().collect();
         self.state.watch_config = loaded.settings.watch_config;
 
+        if let Err(e) = self.refresh_config_watcher() {
+            tracing::warn!(%e, "config watcher setup failed");
+            self.notifier
+                .notify_warning("Config", &format!("Config watcher setup failed: {e}"));
+        }
+
         if is_reload {
             self.notifier
                 .notify_info("Config", "Configuration reloaded");
+        }
+    }
+
+    fn refresh_config_watcher(&mut self) -> notify::Result<()> {
+        self.config_watcher = None;
+        self.config_rx = None;
+
+        if !self.state.watch_config {
+            tracing::debug!("config watcher disabled");
+            return Ok(());
+        }
+
+        let watch_dirs = self.config_watch_dirs();
+        if watch_dirs.is_empty() {
+            tracing::debug!("no config paths to watch");
+            return Ok(());
+        }
+
+        let (tx, rx) = tokio::sync::mpsc::channel(32);
+        let mut watcher = notify::recommended_watcher(move |result| {
+            let _ = tx.blocking_send(result);
+        })?;
+
+        for dir in &watch_dirs {
+            watcher.watch(dir, notify::RecursiveMode::NonRecursive)?;
+        }
+
+        tracing::info!(paths = watch_dirs.len(), "watching config paths");
+        self.config_watcher = Some(watcher);
+        self.config_rx = Some(rx);
+
+        Ok(())
+    }
+
+    fn handle_config_watch_event(&mut self, result: notify::Result<notify::Event>) {
+        let event = match result {
+            Ok(event) => event,
+            Err(e) => {
+                tracing::warn!(%e, "config watcher error");
+                self.notifier
+                    .notify_warning("Config", &format!("Config watcher error: {e}"));
+                return;
+            }
+        };
+
+        if !self.should_reload_for_config_event(&event) {
+            return;
+        }
+
+        tracing::info!(?event, "config file changed, reloading");
+        self.reload_config(true);
+    }
+
+    fn should_reload_for_config_event(&self, event: &notify::Event) -> bool {
+        use notify::EventKind;
+
+        matches!(
+            event.kind,
+            EventKind::Any | EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
+        ) && self.event_affects_config(event)
+    }
+
+    fn event_affects_config(&self, event: &notify::Event) -> bool {
+        let config_paths = self.config_paths();
+        event.paths.iter().any(|path| {
+            config_paths
+                .iter()
+                .any(|config_path| paths_match(path, config_path))
+        })
+    }
+
+    fn config_watch_dirs(&self) -> HashSet<PathBuf> {
+        self.config_paths()
+            .into_iter()
+            .filter_map(|path| path.parent().map(Path::to_path_buf))
+            .filter(|path| path.exists())
+            .collect()
+    }
+
+    fn config_paths(&self) -> HashSet<PathBuf> {
+        if self.state.config_files.is_empty() {
+            HashSet::from([niri_tools_common::paths::default_config_path()])
+        } else {
+            self.state.config_files.clone()
         }
     }
 
@@ -582,6 +695,17 @@ impl DaemonServer {
             parent_cmdline,
             socket: socket_path().to_string_lossy().to_string(),
         }
+    }
+}
+
+fn paths_match(path: &Path, config_path: &Path) -> bool {
+    if path == config_path {
+        return true;
+    }
+
+    match (path.canonicalize(), config_path.canonicalize()) {
+        (Ok(path), Ok(config_path)) => path == config_path,
+        _ => false,
     }
 }
 
@@ -864,5 +988,60 @@ mod tests {
         let cmdline = get_process_cmdline(pid);
         // Should contain something (the test runner binary)
         assert!(!cmdline.is_empty());
+    }
+
+    #[test]
+    fn config_watch_dirs_include_loaded_config_parents() {
+        let mut server = make_server();
+        let dir = tempfile::tempdir().unwrap();
+        let main_path = dir.path().join("niri-tools.kdl");
+        let included_path = dir.path().join("included.kdl");
+
+        server.state.config_files.insert(main_path);
+        server.state.config_files.insert(included_path);
+
+        let dirs = server.config_watch_dirs();
+        assert_eq!(dirs.len(), 1);
+        assert!(dirs.contains(dir.path()));
+    }
+
+    #[test]
+    fn config_event_reloads_for_included_file_change() {
+        let mut server = make_server();
+        let dir = tempfile::tempdir().unwrap();
+        let included_path = dir.path().join("included.kdl");
+        std::fs::write(&included_path, "").unwrap();
+        server
+            .state
+            .config_files
+            .insert(included_path.canonicalize().unwrap());
+
+        let event = notify::Event::new(notify::EventKind::Modify(notify::event::ModifyKind::Data(
+            notify::event::DataChange::Any,
+        )))
+        .add_path(included_path);
+
+        assert!(server.should_reload_for_config_event(&event));
+    }
+
+    #[test]
+    fn config_event_ignores_unrelated_file_change() {
+        let mut server = make_server();
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("niri-tools.kdl");
+        let unrelated_path = dir.path().join("other.kdl");
+        std::fs::write(&config_path, "").unwrap();
+        std::fs::write(&unrelated_path, "").unwrap();
+        server
+            .state
+            .config_files
+            .insert(config_path.canonicalize().unwrap());
+
+        let event = notify::Event::new(notify::EventKind::Modify(notify::event::ModifyKind::Data(
+            notify::event::DataChange::Any,
+        )))
+        .add_path(unrelated_path);
+
+        assert!(!server.should_reload_for_config_event(&event));
     }
 }
