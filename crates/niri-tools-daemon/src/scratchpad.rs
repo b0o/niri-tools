@@ -36,6 +36,7 @@ fn parse_position_value(value: &str, output_dim: u32, window_dim: u32) -> i32 {
 
 /// Calculate the expected window size given a config and output, resolving
 /// percentage sizes against output dimensions and considering per-output overrides.
+#[cfg(test)]
 pub fn calculate_expected_window_size(
     config: &ScratchpadConfig,
     output: &OutputInfo,

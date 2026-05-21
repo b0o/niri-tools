@@ -255,7 +255,7 @@ fn handle_picker_key(
 
     // Ctrl+[ and Ctrl+g also close (vim convention)
     let has_ctrl = modifiers.contains(gtk4::gdk::ModifierType::CONTROL_MASK);
-    if (has_ctrl && key_name == "bracketleft") || (has_ctrl && key_name == "g") {
+    if has_ctrl && (key_name == "bracketleft" || key_name == "g") {
         let mut s = state.borrow_mut();
         s.exit_on_key_release = Some(keycode);
         return gtk4::glib::Propagation::Stop;
